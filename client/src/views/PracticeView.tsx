@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Question } from '../types';
+import { BUNDLED_QUESTIONS } from '../data/bundledQuestions';
 import { sound } from '../sound/soundEngine';
 import { BookOpen, CheckCircle2, XCircle, ArrowRight, RefreshCw, Globe, Sparkles, Award } from 'lucide-react';
 
@@ -23,11 +24,21 @@ export const PracticeView: React.FC = () => {
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setQuestions(data.questions || []);
+        if (data.questions && data.questions.length > 0) {
+          setQuestions(data.questions);
+          return;
+        }
       }
     } catch (err) {
-      console.error('Error fetching practice questions:', err);
+      console.warn('Practice API fallback to bundled questions:', err);
     } finally {
+      // Resilient fallback to BUNDLED_QUESTIONS
+      let localFiltered = [...BUNDLED_QUESTIONS];
+      if (filterSubject) {
+        const match = localFiltered.filter(q => q.subject_id === filterSubject);
+        if (match.length > 0) localFiltered = match;
+      }
+      setQuestions(prev => prev.length > 0 ? prev : localFiltered);
       setLoading(false);
     }
   };

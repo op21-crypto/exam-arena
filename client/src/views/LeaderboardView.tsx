@@ -1,25 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Shield, Flame, Medal, RefreshCw, Award } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { BUNDLED_LEADERBOARD } from '../data/bundledQuestions';
 
 export const LeaderboardView: React.FC = () => {
-  const { user } = useAuth();
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const { user, lang } = useAuth();
+  const [leaderboard, setLeaderboard] = useState<any[]>(BUNDLED_LEADERBOARD);
+  const [loading, setLoading] = useState<boolean>(false);
   const [tierFilter, setTierFilter] = useState<string>('all');
 
   const fetchLeaderboard = async () => {
-    setLoading(true);
     try {
       const res = await fetch('/api/leaderboard/global?limit=50');
       if (res.ok) {
         const data = await res.json();
-        setLeaderboard(data.leaderboard || []);
+        if (data.leaderboard && data.leaderboard.length > 0) {
+          setLeaderboard(data.leaderboard);
+        }
       }
-    } catch (err) {
-      console.error('Error fetching leaderboard:', err);
-    } finally {
-      setLoading(false);
+    } catch {
+      // Keep bundled leaderboard
+      setLeaderboard(BUNDLED_LEADERBOARD);
     }
   };
 

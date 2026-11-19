@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { DailyMission } from '../types';
+import { BUNDLED_MISSIONS, BUNDLED_LEADERBOARD } from '../data/bundledQuestions';
+import { TournamentModal } from '../components/TournamentModal';
 import {
   Swords, Users, Zap, Target, BookOpen, Trophy, Flame,
-  CheckCircle2, ChevronRight, Award, Shield, Sparkles
+  CheckCircle2, ChevronRight, Award, Shield, Sparkles, Medal
 } from 'lucide-react';
 
 interface HomeDashboardProps {
-  onStartQuickBattle: (examId?: string, subjectId?: string) => void;
+  onStartQuickBattle: (examId?: string, subjectId?: string, isSpeed?: boolean) => void;
   onOpenFriendRoom: () => void;
   onOpenPractice: () => void;
   onNavigateTab: (tab: any) => void;
@@ -24,8 +26,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onCancelSearch
 }) => {
   const { user, lang, refreshUser } = useAuth();
-  const [missions, setMissions] = useState<DailyMission[]>([]);
+  const [missions, setMissions] = useState<DailyMission[]>(BUNDLED_MISSIONS);
   const [claiming, setClaiming] = useState<string | null>(null);
+  const [showTournament, setShowTournament] = useState<boolean>(false);
 
   const fetchMissions = async () => {
     if (!user) return;
@@ -33,10 +36,25 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       const res = await fetch(`/api/gamification/missions/${user.id}`);
       if (res.ok) {
         const data = await res.json();
-        setMissions(data.missions || []);
+        if (data.missions && data.missions.length > 0) {
+          setMissions(data.missions);
+          return;
+        }
       }
-    } catch (err) {
-      console.error('Error fetching missions:', err);
+    } catch {
+      // fallback to bundled missions
+    }
+
+    // Read local storage missions state
+    const saved = localStorage.getItem('exam_arena_local_missions');
+    if (saved) {
+      try {
+        setMissions(JSON.parse(saved));
+      } catch {
+        setMissions(BUNDLED_MISSIONS);
+      }
+    } else {
+      setMissions(BUNDLED_MISSIONS);
     }
   };
 
@@ -56,12 +74,30 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       if (res.ok) {
         await refreshUser();
         await fetchMissions();
+        return;
       }
-    } catch (err) {
-      console.error('Error claiming mission:', err);
-    } finally {
-      setClaiming(null);
+    } catch {
+      // local fallback claim
     }
+
+    // Local claim
+    const updated = missions.map(m => m.id === missionId ? { ...m, is_claimed: true } : m);
+    setMissions(updated);
+    localStorage.setItem('exam_arena_local_missions', JSON.stringify(updated));
+
+    // Award local coins and XP
+    const mission = missions.find(m => m.id === missionId);
+    if (mission && user.stats) {
+      const localStr = localStorage.getItem('exam_arena_local_user');
+      if (localStr) {
+        const u = JSON.parse(localStr);
+        u.stats.coins = (u.stats.coins || 100) + mission.reward_coins;
+        u.stats.xp = (u.stats.xp || 0) + mission.reward_xp;
+        localStorage.setItem('exam_arena_local_user', JSON.stringify(u));
+        refreshUser();
+      }
+    }
+    setClaiming(null);
   };
 
   return (
@@ -75,23 +111,25 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           <div className="flex items-center justify-between mb-2">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[11px] font-gaming font-bold tracking-wider uppercase">
               <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-              1V1 COMPETITIVE MULTIPLAYER
+              {lang === 'hi' ? '1V1 लाइव मुकाबला' : '1V1 COMPETITIVE MULTIPLAYER'}
             </span>
 
             {/* Streak Badge */}
-            {(user?.stats.win_streak || 0) > 0 && (
+            {(user?.stats?.win_streak || 0) > 0 && (
               <div className="flex items-center gap-1 text-xs font-gaming font-extrabold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-lg">
                 <Flame className="w-3.5 h-3.5 fill-amber-400" />
-                <span>{user?.stats.win_streak} WIN STREAK</span>
+                <span>{user?.stats.win_streak} {lang === 'hi' ? 'जीत का सिलसिला' : 'WIN STREAK'}</span>
               </div>
             )}
           </div>
 
           <h1 className="font-gaming font-black text-2xl sm:text-3xl text-white tracking-wide">
-            ENTER THE ARENA
+            {lang === 'hi' ? 'रणभूमि में प्रवेश करें' : 'ENTER THE ARENA'}
           </h1>
           <p className="text-xs text-slate-300 mt-1 max-w-xs leading-relaxed">
-            Real-time 1v1 battle against live aspirants. 10 questions, 10s timer, server-authoritative scoring.
+            {lang === 'hi'
+              ? 'सजीव अभ्यार्थियों के साथ 1v1 मुकाबला। 10 प्रश्न, 10s टाइमर, प्रामाणिक सरकारी परीक्षा PYQ।'
+              : 'Real-time 1v1 battle against live aspirants. 10 questions, 10s timer, authentic Gov Exam PYQs.'}
           </p>
 
           <div className="mt-5 flex items-center gap-3">
@@ -101,7 +139,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 className="flex-1 py-3.5 px-5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-gaming font-bold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg shadow-rose-900/40 animate-pulse transition-all"
               >
                 <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping" />
-                <span>Matchmaking in progress... (Cancel)</span>
+                <span>{lang === 'hi' ? 'मैचमेकिंग जारी है... (रद्द करें)' : 'Matchmaking in progress... (Cancel)'}</span>
               </button>
             ) : (
               <button
@@ -109,7 +147,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 className="flex-1 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:via-indigo-500 hover:to-purple-500 text-white font-gaming font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/50 hover:shadow-cyan-500/30 active:scale-95 transition-all"
               >
                 <Swords className="w-5 h-5" />
-                <span>⚔️ FIND RANDOM OPPONENT</span>
+                <span>⚔️ {lang === 'hi' ? 'प्रतिद्वंद्वी खोजें (QUICK 1V1)' : 'FIND RANDOM OPPONENT'}</span>
               </button>
             )}
           </div>
@@ -120,7 +158,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
       <div>
         <h2 className="font-gaming font-bold text-lg text-slate-200 uppercase tracking-wider mb-3 flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-indigo-400" />
-          Game Modes & Battles
+          {lang === 'hi' ? 'गेम मोड्स और बैटल अरेना' : 'Game Modes & Battles'}
         </h2>
 
         <div className="grid grid-cols-2 gap-3">
@@ -133,13 +171,15 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
                 <Users className="w-5 h-5" />
               </div>
-              <h3 className="font-gaming font-bold text-base text-white">Play with Friends</h3>
+              <h3 className="font-gaming font-bold text-base text-white">
+                {lang === 'hi' ? 'दोस्तों के साथ खेलें' : 'Play with Friends'}
+              </h3>
               <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                Create or join private room with room code.
+                {lang === 'hi' ? 'रूम कोड बनाएं या दोस्तों को व्हाट्सएप पर आमंत्रित करें।' : 'Create or join private room with room code.'}
               </p>
             </div>
             <span className="text-[10px] font-bold text-purple-400 flex items-center gap-1 mt-3">
-              Custom Room <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+              {lang === 'hi' ? 'कस्टम रूम →' : 'Custom Room'} <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
             </span>
           </div>
 
@@ -152,32 +192,36 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
                 <Target className="w-5 h-5" />
               </div>
-              <h3 className="font-gaming font-bold text-base text-white">Subject Battle</h3>
+              <h3 className="font-gaming font-bold text-base text-white">
+                {lang === 'hi' ? 'विषय अनुसार मुकाबला' : 'Subject Battle'}
+              </h3>
               <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                Pick Math, Reasoning, English, or GK specifically.
+                {lang === 'hi' ? 'गणित, रीजनिंग, अंग्रेजी या GK विशेष रूप से चुनें।' : 'Pick Math, Reasoning, English, or GK specifically.'}
               </p>
             </div>
             <span className="text-[10px] font-bold text-cyan-400 flex items-center gap-1 mt-3">
-              Choose Subject <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+              {lang === 'hi' ? 'विषय चुनें →' : 'Choose Subject'} <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
             </span>
           </div>
 
           {/* Speed Challenge */}
           <div
-            onClick={() => onStartQuickBattle()}
+            onClick={() => onStartQuickBattle(undefined, undefined, true)}
             className="group cursor-pointer bg-arena-card hover:bg-slate-800/90 border border-arena-border hover:border-amber-500/50 rounded-2xl p-4 transition-all duration-200 active:scale-98 shadow-md flex flex-col justify-between"
           >
             <div>
               <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
                 <Zap className="w-5 h-5" />
               </div>
-              <h3 className="font-gaming font-bold text-base text-white">Speed Challenge</h3>
+              <h3 className="font-gaming font-bold text-base text-white">
+                {lang === 'hi' ? 'स्पीड चैलेंज' : 'Speed Challenge'}
+              </h3>
               <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                Rapid answers earn up to +50 speed bonus points!
+                {lang === 'hi' ? '6 सेकंड रैपिड मोड! +50 तक स्पीड बोनस प्वाइंट्स।' : '6s rapid timer! Earn up to +50 speed bonus points!'}
               </p>
             </div>
             <span className="text-[10px] font-bold text-amber-400 flex items-center gap-1 mt-3">
-              Fast Reflexes <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+              {lang === 'hi' ? 'रैपिड फायर →' : 'Fast Reflexes'} <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
             </span>
           </div>
 
@@ -190,26 +234,106 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
                 <BookOpen className="w-5 h-5" />
               </div>
-              <h3 className="font-gaming font-bold text-base text-white">Practice Mode</h3>
+              <h3 className="font-gaming font-bold text-base text-white">
+                {lang === 'hi' ? 'अभ्यास मोड' : 'Practice Mode'}
+              </h3>
               <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                Untimed practice with bilingual explanations.
+                {lang === 'hi' ? 'असीमित समय, द्विभाषी प्रश्न और विस्तृत व्याख्या।' : 'Untimed practice with bilingual explanations.'}
               </p>
             </div>
             <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 mt-3">
-              Solo Drill <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+              {lang === 'hi' ? 'अभ्यास शुरू करें →' : 'Solo Drill'} <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
             </span>
           </div>
         </div>
+
+        {/* Featured Tournament Card */}
+        <div
+          onClick={() => setShowTournament(true)}
+          className="mt-3 cursor-pointer group rounded-2xl bg-gradient-to-r from-amber-950/70 via-indigo-950/80 to-slate-900 border border-amber-500/40 p-4 shadow-xl hover:border-amber-400 transition-all flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <Trophy className="w-6 h-6 text-amber-400 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-gaming font-extrabold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {lang === 'hi' ? 'मेगा कप' : 'MEGA CUP'}
+                </span>
+                <span className="text-xs font-gaming text-amber-400 font-bold">10,000 Coins Prize</span>
+              </div>
+              <h4 className="font-gaming font-bold text-sm text-white mt-0.5">
+                {lang === 'hi' ? 'अखिल भारतीय सरकारी परीक्षा चैंपियनशिप' : 'All-India Exam Championship 2026'}
+              </h4>
+              <p className="text-[11px] text-slate-300">
+                {lang === 'hi' ? 'रविवार रात 8:00 बजे · 1,420 अभ्यार्थी पंजीकृत' : 'Sunday 8:00 PM · 1,420 Aspirants Registered'}
+              </p>
+            </div>
+          </div>
+          <button className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-gaming font-bold text-xs shrink-0 shadow-md">
+            {lang === 'hi' ? 'विवरण' : 'Enter'}
+          </button>
+        </div>
       </div>
 
-      {/* 3. Daily Missions */}
+      {/* 3. Global Leaderboard Preview */}
+      <div className="bg-arena-card border border-arena-border rounded-2xl p-4 shadow-lg">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Medal className="w-4 h-4 text-amber-400" />
+            <h3 className="font-gaming font-bold text-base text-white">
+              {lang === 'hi' ? 'शीर्ष अभ्यार्थी लीडरबोर्ड' : 'Top Aspirants Ranking'}
+            </h3>
+          </div>
+          <button
+            onClick={() => onNavigateTab('leaderboard')}
+            className="text-[11px] font-bold text-indigo-400 hover:text-indigo-300 flex items-center gap-0.5"
+          >
+            {lang === 'hi' ? 'सभी रैंक देखें' : 'View All'} <ChevronRight className="w-3 h-3" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {BUNDLED_LEADERBOARD.slice(0, 3).map((top, idx) => (
+            <div
+              key={top.id}
+              onClick={() => onNavigateTab('leaderboard')}
+              className="cursor-pointer bg-slate-900/80 hover:bg-slate-900 border border-slate-800 rounded-xl p-2.5 flex flex-col items-center text-center transition-all hover:scale-102"
+            >
+              <div className="relative mb-1.5">
+                <img
+                  src={top.avatar}
+                  alt={top.username}
+                  className="w-10 h-10 rounded-full object-cover border-2 border-amber-400/80 bg-slate-800"
+                />
+                <span className="absolute -bottom-1 -right-1 text-xs">
+                  {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}
+                </span>
+              </div>
+              <span className="font-bold text-xs text-white truncate max-w-[85px]">
+                {top.username}
+              </span>
+              <span className="text-[10px] font-gaming font-bold text-cyan-400">
+                {top.rating} Elo
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 4. Daily Missions */}
       <div className="bg-arena-card border border-arena-border rounded-2xl p-4 shadow-lg">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Award className="w-4 h-4 text-amber-400" />
-            <h3 className="font-gaming font-bold text-base text-white">Daily Missions</h3>
+            <h3 className="font-gaming font-bold text-base text-white">
+              {lang === 'hi' ? 'दैनिक मिशन' : 'Daily Missions'}
+            </h3>
           </div>
-          <span className="text-[10px] text-slate-400">Resets daily at 00:00</span>
+          <span className="text-[10px] text-slate-400">
+            {lang === 'hi' ? 'प्रतिदिन 00:00 बजे रीसेट' : 'Resets daily at 00:00'}
+          </span>
         </div>
 
         <div className="space-y-2.5">
@@ -246,7 +370,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               <div>
                 {m.is_claimed ? (
                   <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 rounded-lg">
-                    Claimed ✓
+                    {lang === 'hi' ? 'प्राप्त ✓' : 'Claimed ✓'}
                   </span>
                 ) : m.is_completed ? (
                   <button
@@ -254,16 +378,22 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                     disabled={claiming === m.id}
                     className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-gaming font-bold text-xs shadow-md shadow-amber-500/20 active:scale-95 transition-transform"
                   >
-                    {claiming === m.id ? 'Claiming...' : 'Claim'}
+                    {claiming === m.id ? (lang === 'hi' ? 'प्राप्त हो रहा है...' : 'Claiming...') : (lang === 'hi' ? 'रिवॉर्ड लें' : 'Claim')}
                   </button>
                 ) : (
-                  <span className="text-[10px] text-slate-500 font-medium">In Progress</span>
+                  <span className="text-[10px] text-slate-500 font-medium">
+                    {lang === 'hi' ? 'प्रगति पर' : 'In Progress'}
+                  </span>
                 )}
               </div>
             </div>
           ))}
         </div>
       </div>
+
+      {showTournament && (
+        <TournamentModal onClose={() => setShowTournament(false)} lang={lang} />
+      )}
     </div>
   );
 };

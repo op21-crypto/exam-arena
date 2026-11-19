@@ -102,6 +102,49 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// Firebase Sync endpoint (bridges Firebase Auth/Firestore user with local database & sockets)
+router.post('/firebase-sync', async (req: Request, res: Response) => {
+  try {
+    const { firebaseUid, username, email, avatar, isGuest } = req.body;
+    if (!firebaseUid) {
+      return res.status(400).json({ error: 'firebaseUid is required' });
+    }
+
+    const cleanUsername = username 
+      ? String(username).replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 30) 
+      : `Aspirant_${firebaseUid.substring(0, 6)}`;
+    const avatarUrl = avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`;
+
+    // Ensure user exists in local database for matchmaker & socket support
+    const existing = db.queryOne<{ id: string }>('SELECT id FROM users WHERE id = ?', [firebaseUid]);
+    if (!existing) {
+      db.run(
+        'INSERT OR REPLACE INTO users (id, username, email, avatar, is_guest, is_admin) VALUES (?, ?, ?, ?, ?, 0)',
+        [firebaseUid, cleanUsername, email || null, avatarUrl, isGuest ? 1 : 0]
+      );
+      db.run(`
+        INSERT OR IGNORE INTO user_stats (user_id, rating, rank_tier, xp, level, coins, total_battles, wins, losses, draws, win_streak, best_streak, total_questions, correct_questions)
+        VALUES (?, 1200, 'Silver', 0, 1, 100, 0, 0, 0, 0, 0, 0, 0, 0)
+      `, [firebaseUid]);
+    } else {
+      if (email) {
+        db.run('UPDATE users SET email = ? WHERE id = ?', [email, firebaseUid]);
+      }
+    }
+
+    const token = jwt.sign(
+      { userId: firebaseUid, username: cleanUsername, isGuest: Boolean(isGuest) }, 
+      JWT_SECRET, 
+      { expiresIn: '30d' }
+    );
+    const profile = getUserFullProfile(firebaseUid);
+
+    return res.json({ token, user: profile });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // Current user profile
 router.get('/me', (req: Request, res: Response) => {
   try {

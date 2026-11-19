@@ -1,0 +1,324 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}
+    // Document ID: Firebase Auth UID (matches request.auth.uid)
+    // Fields:
+    //   - id: string (required, 1..128 chars, immutable, matches userId and request.auth.uid)
+    //   - username: string (required, 2..32 chars, alphanumeric, underscores, hyphens)
+    //   - email: string | null (optional for guests, 5..255 chars, valid email format)
+    //   - avatar: string (required, 1..500 chars, valid HTTP/HTTPS URL or identifier)
+    //   - isGuest: bool (required, true for anonymous guest players)
+    //   - createdAt: timestamp (required, immutable, set at document creation)
+    //   - lastLoginAt: timestamp (required, updated on session creation/login)
+    //
+    // Collection: /user_stats/{userId}
+    // Document ID: Firebase Auth UID of the player
+    // Fields:
+    //   - userId: string (optional, 1..128 chars, immutable, matches auth.uid)
+    //   - rating: int (required, 0..10000, default starting Elo: 1200)
+    //   - rankTier: string (required, enum: Bronze, Silver, Gold, Platinum, Diamond, Master, Grandmaster, Legend)
+    //   - xp: int (required, >= 0, <= 1000000000)
+    //   - level: int (required, 1..1000)
+    //   - coins: int (required, >= 0, <= 1000000000)
+    //   - totalBattles: int (required, >= 0, <= 1000000)
+    //   - wins: int (required, >= 0, <= 1000000)
+    //   - losses: int (required, >= 0, <= 1000000)
+    //   - draws: int (required, >= 0, <= 1000000)
+    //   - winStreak: int (required, >= 0, <= 100000)
+    //   - bestStreak: int (required, >= 0, <= 100000)
+    //   - totalQuestions: int (required, >= 0, <= 10000000)
+    //   - correctQuestions: int (required, >= 0, <= totalQuestions)
+    //   - updatedAt: timestamp (optional, recent update timestamp)
+    //
+    // Collection: /battles/{battleId}
+    // Document ID: Battle match UUID / identifier
+    // Fields:
+    //   - id: string (optional, 1..128 chars)
+    //   - mode: string (required, enum: quick, friend, subject, practice)
+    //   - status: string (required, enum: waiting, in_progress, completed, abandoned)
+    //   - room_code: string (optional, 0..16 chars)
+    //   - exam_id: string (optional, 0..64 chars)
+    //   - subject_id: string (optional, 0..64 chars)
+    //   - player1_id: string (required, 1..128 chars, immutable, must match creator request.auth.uid)
+    //   - player2_id: string | null (optional on creation, 1..128 chars, immutable once assigned)
+    //   - player1_score: int (optional, 0..100000)
+    //   - player2_score: int (optional, 0..100000)
+    //   - winner_id: string | null (optional, 0..128 chars)
+    //   - rating_change_p1: int (optional, -500..500)
+    //   - rating_change_p2: int (optional, -500..500)
+    //   - created_at: timestamp (required, immutable)
+    //   - completed_at: timestamp (optional, completion timestamp)
+    //   - player1: map (optional denormalized player profile summary)
+    //   - player2: map (optional denormalized player profile summary)
+    //   - questions: list (optional battle questions array, max 50 items)
+    //   - current_question: int (optional, 0..50)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Global Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if authenticated user owns the resource by user ID
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Validate that document has all required fields
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Enforce strict schema by ensuring only allowed fields exist
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // Verify specified immutable fields have not been altered on update
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Validate email format with size bounds
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() <= 255 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // Validate avatar URL or preset identifier
+    function isValidAvatar(avatar) {
+      return avatar is string &&
+        avatar.size() >= 1 &&
+        avatar.size() <= 500 &&
+        (avatar.matches("^https?://.*") || avatar.matches("^[a-zA-Z0-9_ -]{1,100}$"));
+    }
+
+    // Validate rank tiers against supported game tiers
+    function isValidRankTier(tier) {
+      return tier is string &&
+        tier in ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Master', 'Grandmaster', 'Legend'];
+    }
+
+    // Validate battle modes
+    function isValidBattleMode(mode) {
+      return mode is string &&
+        mode in ['quick', 'friend', 'subject', 'practice'];
+    }
+
+    // Validate battle status
+    function isValidBattleStatus(status) {
+      return status is string &&
+        status in ['waiting', 'in_progress', 'completed', 'abandoned'];
+    }
+
+    // Check if user is an existing participant in the battle
+    function isBattleParticipant(battleData) {
+      return isAuthenticated() && (
+        request.auth.uid == battleData.player1_id ||
+        (('player2_id' in battleData) && battleData.player2_id != null && request.auth.uid == battleData.player2_id)
+      );
+    }
+
+    // Check if user is joining an open waiting battle as player 2
+    function isJoiningAsPlayer2(existingData, incomingData) {
+      return isAuthenticated() &&
+        existingData.status == 'waiting' &&
+        (!('player2_id' in existingData) || existingData.player2_id == null) &&
+        ('player2_id' in incomingData) &&
+        incomingData.player2_id == request.auth.uid &&
+        request.auth.uid != existingData.player1_id;
+    }
+
+    // Validate valid lifecycle status transitions for battles
+    function isValidBattleStatusTransition(currentStatus, nextStatus) {
+      return currentStatus == nextStatus ||
+        (currentStatus == 'waiting' && (nextStatus == 'in_progress' || nextStatus == 'abandoned')) ||
+        (currentStatus == 'in_progress' && (nextStatus == 'completed' || nextStatus == 'abandoned'));
+    }
+
+    // ===============================================================
+    // Domain Validator: Users Collection
+    // ===============================================================
+
+    function isValidUser(data, userId) {
+      return hasOnlyAllowedFields(['id', 'username', 'email', 'avatar', 'isGuest', 'createdAt', 'lastLoginAt']) &&
+        hasRequiredFields(['id', 'username', 'avatar', 'isGuest', 'createdAt', 'lastLoginAt']) &&
+        data.id is string &&
+        data.id == userId &&
+        data.id == request.auth.uid &&
+        data.id.size() >= 1 &&
+        data.id.size() <= 128 &&
+        data.username is string &&
+        data.username.size() >= 2 &&
+        data.username.size() <= 32 &&
+        isValidAvatar(data.avatar) &&
+        data.isGuest is bool &&
+        data.createdAt is timestamp &&
+        data.lastLoginAt is timestamp &&
+        data.lastLoginAt <= request.time &&
+        (
+          !('email' in data) ||
+          data.email == null ||
+          (data.email is string && data.email.size() >= 5 && isValidEmail(data.email))
+        );
+    }
+
+    // ===============================================================
+    // Domain Validator: User Stats Collection
+    // ===============================================================
+
+    function isValidUserStats(data, userId) {
+      return hasOnlyAllowedFields([
+          'userId', 'rating', 'rankTier', 'xp', 'level', 'coins',
+          'totalBattles', 'wins', 'losses', 'draws', 'winStreak',
+          'bestStreak', 'totalQuestions', 'correctQuestions', 'updatedAt'
+        ]) &&
+        hasRequiredFields([
+          'rating', 'rankTier', 'xp', 'level', 'coins',
+          'totalBattles', 'wins', 'losses', 'draws', 'winStreak',
+          'bestStreak', 'totalQuestions', 'correctQuestions'
+        ]) &&
+        data.rating is int && data.rating >= 0 && data.rating <= 10000 &&
+        isValidRankTier(data.rankTier) &&
+        data.xp is int && data.xp >= 0 && data.xp <= 1000000000 &&
+        data.level is int && data.level >= 1 && data.level <= 1000 &&
+        data.coins is int && data.coins >= 0 && data.coins <= 1000000000 &&
+        data.totalBattles is int && data.totalBattles >= 0 && data.totalBattles <= 1000000 &&
+        data.wins is int && data.wins >= 0 && data.wins <= 1000000 &&
+        data.losses is int && data.losses >= 0 && data.losses <= 1000000 &&
+        data.draws is int && data.draws >= 0 && data.draws <= 1000000 &&
+        data.winStreak is int && data.winStreak >= 0 && data.winStreak <= 100000 &&
+        data.bestStreak is int && data.bestStreak >= 0 && data.bestStreak <= 100000 &&
+        data.totalQuestions is int && data.totalQuestions >= 0 && data.totalQuestions <= 10000000 &&
+        data.correctQuestions is int && data.correctQuestions >= 0 && data.correctQuestions <= data.totalQuestions &&
+        (!('userId' in data) || (data.userId is string && data.userId == userId && data.userId == request.auth.uid)) &&
+        (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    // ===============================================================
+    // Domain Validator: Battles Collection
+    // ===============================================================
+
+    function isValidBattle(data) {
+      return hasOnlyAllowedFields([
+          'id', 'mode', 'status', 'room_code', 'exam_id', 'subject_id',
+          'player1_id', 'player2_id', 'player1_score', 'player2_score',
+          'winner_id', 'rating_change_p1', 'rating_change_p2',
+          'created_at', 'completed_at', 'player1', 'player2',
+          'questions', 'current_question'
+        ]) &&
+        hasRequiredFields(['mode', 'status', 'player1_id', 'created_at']) &&
+        isValidBattleMode(data.mode) &&
+        isValidBattleStatus(data.status) &&
+        data.player1_id is string &&
+        data.player1_id.size() >= 1 &&
+        data.player1_id.size() <= 128 &&
+        data.created_at is timestamp &&
+        (!('id' in data) || (data.id is string && data.id.size() >= 1 && data.id.size() <= 128)) &&
+        (!('room_code' in data) || (data.room_code is string && data.room_code.size() <= 16)) &&
+        (!('exam_id' in data) || (data.exam_id is string && data.exam_id.size() <= 64)) &&
+        (!('subject_id' in data) || (data.subject_id is string && data.subject_id.size() <= 64)) &&
+        (!('player2_id' in data) || data.player2_id == null || (data.player2_id is string && data.player2_id.size() >= 1 && data.player2_id.size() <= 128)) &&
+        (!('player1_score' in data) || (data.player1_score is int && data.player1_score >= 0 && data.player1_score <= 100000)) &&
+        (!('player2_score' in data) || (data.player2_score is int && data.player2_score >= 0 && data.player2_score <= 100000)) &&
+        (!('winner_id' in data) || data.winner_id == null || (data.winner_id is string && data.winner_id.size() <= 128)) &&
+        (!('rating_change_p1' in data) || (data.rating_change_p1 is int && data.rating_change_p1 >= -500 && data.rating_change_p1 <= 500)) &&
+        (!('rating_change_p2' in data) || (data.rating_change_p2 is int && data.rating_change_p2 >= -500 && data.rating_change_p2 <= 500)) &&
+        (!('completed_at' in data) || (data.completed_at is timestamp && data.completed_at <= request.time)) &&
+        (!('player1' in data) || data.player1 is map) &&
+        (!('player2' in data) || data.player2 is map) &&
+        (!('questions' in data) || (data.questions is list && data.questions.size() <= 50)) &&
+        (!('current_question' in data) || (data.current_question is int && data.current_question >= 0 && data.current_question <= 50));
+    }
+
+    // Verify immutable battle invariants on update
+    function areImmutableBattleFieldsUnchanged() {
+      return areImmutableFieldsUnchanged(['player1_id', 'created_at']) &&
+        (
+          !('player2_id' in resource.data) ||
+          resource.data.player2_id == null ||
+          areImmutableFieldsUnchanged(['player2_id'])
+        );
+    }
+
+    // ===============================================================
+    // Security Rules Match Declarations
+    // ===============================================================
+
+    // Root Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 1. Users Collection (/users/{userId})
+    match /users/{userId} {
+      // Direct read access is strictly limited to the account owner.
+      // This enforces the "No Mixed Content" rule and protects user PII (email)
+      // from being harvested by other authenticated accounts.
+      // Public profile data (username, avatar, rank tier) is safely accessed
+      // via /user_stats and /battles.
+      allow read: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+        isValidUser(request.resource.data, userId) &&
+        request.resource.data.createdAt <= request.time;
+
+      allow update: if isOwner(userId) &&
+        isValidUser(request.resource.data, userId) &&
+        areImmutableFieldsUnchanged(['id', 'createdAt']);
+
+      allow delete: if false;
+    }
+
+    // 2. User Stats Collection (/user_stats/{userId})
+    match /user_stats/{userId} {
+      // Authenticated users can read stats for leaderboards, matchmaking, and opponent dossiers.
+      // This collection contains zero PII, making authenticated read safe.
+      allow read: if isAuthenticated();
+
+      allow create: if isOwner(userId) &&
+        isValidUserStats(request.resource.data, userId);
+
+      allow update: if isOwner(userId) &&
+        isValidUserStats(request.resource.data, userId) &&
+        (!('userId' in resource.data) || areImmutableFieldsUnchanged(['userId']));
+
+      allow delete: if false;
+    }
+
+    // 3. Battles Collection (/battles/{battleId})
+    match /battles/{battleId} {
+      // Authenticated users can read battles for real-time play, match history, and spectator mode
+      allow read: if isAuthenticated();
+
+      // Only authenticated users can create a battle, and player1_id must match the caller's auth UID
+      allow create: if isAuthenticated() &&
+        request.resource.data.player1_id == request.auth.uid &&
+        isValidBattle(request.resource.data) &&
+        request.resource.data.created_at <= request.time &&
+        request.resource.data.status in ['waiting', 'in_progress'];
+
+      // Only battle participants (player1, player2) or an eligible opponent joining as player 2 can update
+      allow update: if isAuthenticated() &&
+        (isBattleParticipant(resource.data) || isJoiningAsPlayer2(resource.data, request.resource.data)) &&
+        isValidBattle(request.resource.data) &&
+        areImmutableBattleFieldsUnchanged() &&
+        isValidBattleStatusTransition(resource.data.status, request.resource.data.status);
+
+      allow delete: if false;
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from './context/AuthContext';
 import { socket } from './socket/socket';
 import { Header } from './components/Header';
@@ -14,6 +14,7 @@ import { BattleScreen } from './components/BattleScreen';
 import { BattleResultModal } from './components/BattleResultModal';
 import { FriendRoomModal } from './components/FriendRoomModal';
 import { AuthModal } from './components/AuthModal';
+import { localGameEngine } from './services/localGameEngine';
 import { SanitizedQuestion, BattlePlayerInfo, BattleFinishedData } from './types';
 
 export const App: React.FC = () => {
@@ -22,13 +23,20 @@ export const App: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showFriendModal, setShowFriendModal] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
+  const searchTimeoutRef = useRef<any>(null);
 
   // Friend Room State
   const [friendRoomData, setFriendRoomData] = useState<any>(null);
 
   // Active Battle State
   const [activeBattleId, setActiveBattleId] = useState<string | null>(null);
+  const [battlePlayers, setBattlePlayers] = useState<{
+    player1: BattlePlayerInfo;
+    player2: BattlePlayerInfo;
+  } | null>(null);
   const [allBattlePlayers, setAllBattlePlayers] = useState<any[]>([]);
+
+  const [showVSModal, setShowVSModal] = useState<boolean>(false);
   const [vsData, setVsData] = useState<{
     player1: BattlePlayerInfo;
     player2: BattlePlayerInfo;
@@ -57,10 +65,17 @@ export const App: React.FC = () => {
     const roomCode = params.get('room') || params.get('join');
     if (roomCode) {
       console.log('🔗 Auto-joining friend room from URL query:', roomCode);
-      socket.emit('join_friend_room', {
-        roomCode: roomCode.toUpperCase(),
-        userId: user.id
-      });
+      if (socket && socket.connected) {
+        socket.emit('join_friend_room', {
+          roomCode: roomCode.toUpperCase(),
+          userId: user.id
+        });
+      } else {
+        // Local join
+        const localRoom = localGameEngine.createFriendRoom(user);
+        localRoom.roomCode = roomCode.toUpperCase();
+        setFriendRoomData(localRoom);
+      }
       setShowFriendModal(true);
     }
   }, [user?.id]);
@@ -82,9 +97,11 @@ export const App: React.FC = () => {
       players?: any[];
       totalQuestions: number;
     }) => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
       setIsSearching(false);
       setShowFriendModal(false);
       setActiveBattleId(data.battleId);
+      setBattlePlayers({ player1: data.player1, player2: data.player2 });
       setBattleResultData(null);
       setRematchRequested(false);
       setOpponentRematchReady(false);
@@ -93,6 +110,7 @@ export const App: React.FC = () => {
       setTotalQuestions(data.totalQuestions);
       setAllBattlePlayers(data.players || [data.player1, data.player2]);
 
+      setShowVSModal(true);
       setVsData({
         player1: data.player1,
         player2: data.player2,
@@ -116,7 +134,7 @@ export const App: React.FC = () => {
       timeLimitSeconds: number;
       players?: any[];
     }) => {
-      setVsData(null);
+      setShowVSModal(false);
       setCurrentQuestion(data.question);
       setQuestionIndex(data.questionIndex);
       setTotalQuestions(data.totalQuestions);
@@ -189,40 +207,149 @@ export const App: React.FC = () => {
       socket.off('friend_room_updated');
       socket.off('friend_room_error');
     };
-  }, [user?.id, vsData]);
+  }, [user?.id]);
 
-  const handleStartQuickBattle = (examId?: string, subjectId?: string) => {
+  // Hybrid Battle Launcher: Works 100% online or offline!
+  const handleStartQuickBattle = (examId?: string, subjectId?: string, isSpeed?: boolean) => {
     if (!user) return;
-    socket.emit('join_queue', {
-      userId: user.id,
-      examId,
-      subjectId
-    });
+    setIsSearching(true);
+
+    const launchLocal = () => {
+      setIsSearching(false);
+      localGameEngine.startBattle(
+        { examId, subjectId, user, isSpeed },
+        {
+          onMatched: (data) => {
+            setIsSearching(false);
+            setShowFriendModal(false);
+            setActiveBattleId(data.battleId);
+            setBattlePlayers({ player1: data.player1, player2: data.player2 });
+            setAllBattlePlayers(data.players || [data.player1, data.player2]);
+            setBattleResultData(null);
+            setRematchRequested(false);
+            setOpponentRematchReady(false);
+            setMyScore(0);
+            setOpponentScore(0);
+            setTotalQuestions(data.totalQuestions);
+            setShowVSModal(true);
+            setVsData({
+              player1: data.player1,
+              player2: data.player2,
+              countdown: null
+            });
+          },
+          onCountdown: (data) => {
+            setVsData(prev => prev ? {
+              ...prev,
+              countdown: data.count,
+              countdownMessage: data.message
+            } : null);
+          },
+          onQuestionStart: (data) => {
+            setShowVSModal(false);
+            setCurrentQuestion(data.question);
+            setQuestionIndex(data.questionIndex);
+            setTotalQuestions(data.totalQuestions);
+            setRemainingSeconds(data.timeLimitSeconds);
+            setOpponentAnswered(false);
+            setQuestionResolution(null);
+            if (data.players) setAllBattlePlayers(data.players);
+          },
+          onTimerTick: (data) => {
+            setRemainingSeconds(data.remainingSeconds);
+          },
+          onOpponentStatus: (data) => {
+            setOpponentAnswered(data.hasAnswered);
+            if (data.playersAnswered) {
+              setAllBattlePlayers(prev => prev.map(p => {
+                const match = data.playersAnswered?.find((pa: any) => pa.userId === p.userId);
+                return match ? { ...p, answered: match.answered } : p;
+              }));
+            }
+          },
+          onQuestionResolved: (data) => {
+            setQuestionResolution(data);
+            setMyScore(data.yourScore);
+            setOpponentScore(data.opponentScore);
+            if (data.allPlayers) setAllBattlePlayers(data.allPlayers);
+          },
+          onBattleFinished: (data) => {
+            setCurrentQuestion(null);
+            setQuestionResolution(null);
+            setBattleResultData(data);
+            refreshUser();
+          }
+        }
+      );
+    };
+
+    if (socket && socket.connected) {
+      socket.emit('join_queue', {
+        userId: user.id,
+        examId,
+        subjectId
+      });
+
+      // Resilient 1.8s timeout: if server queue doesn't pair immediately, launch local bot
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = setTimeout(() => {
+        if (!activeBattleId) {
+          launchLocal();
+        }
+      }, 1800);
+    } else {
+      // Standalone mode: 500ms realistic pulse then start
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      searchTimeoutRef.current = setTimeout(() => {
+        launchLocal();
+      }, 500);
+    }
   };
 
   const handleCancelSearch = () => {
-    socket.emit('leave_queue');
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (socket && socket.connected) {
+      socket.emit('leave_queue');
+    }
+    localGameEngine.stopActiveBattle();
     setIsSearching(false);
   };
 
   const handleSubmitAnswer = (selectedOption: number, elapsedMs: number) => {
     if (!activeBattleId) return;
-    socket.emit('submit_answer', {
-      battleId: activeBattleId,
-      questionIndex,
-      selectedOption,
-      elapsedMs
-    });
+
+    if (activeBattleId.startsWith('local_battle_')) {
+      localGameEngine.submitAnswer(selectedOption, elapsedMs);
+    } else {
+      socket.emit('submit_answer', {
+        battleId: activeBattleId,
+        questionIndex,
+        selectedOption,
+        elapsedMs
+      });
+    }
   };
 
   const handleRematch = () => {
     if (!activeBattleId) return;
     setRematchRequested(true);
-    socket.emit('request_rematch', { battleId: activeBattleId });
+
+    if (activeBattleId.startsWith('local_battle_')) {
+      setTimeout(() => {
+        setOpponentRematchReady(true);
+        handleStartQuickBattle();
+      }, 600);
+    } else {
+      socket.emit('request_rematch', { battleId: activeBattleId });
+    }
   };
 
   const handleReturnHome = () => {
+    localGameEngine.stopActiveBattle();
     setActiveBattleId(null);
+    setBattlePlayers(null);
+    setShowVSModal(false);
+    setVsData(null);
     setBattleResultData(null);
     setCurrentQuestion(null);
     setActiveTab('home');
@@ -230,36 +357,130 @@ export const App: React.FC = () => {
 
   const handleCreateFriendRoom = (examId?: string, subjectId?: string, maxPlayers?: number) => {
     if (!user) return;
-    socket.emit('create_friend_room', {
-      userId: user.id,
-      examId,
-      subjectId,
-      maxPlayers: maxPlayers || 4
-    });
+    if (socket && socket.connected) {
+      socket.emit('create_friend_room', {
+        userId: user.id,
+        examId,
+        subjectId,
+        maxPlayers: maxPlayers || 4
+      });
+    } else {
+      const room = localGameEngine.createFriendRoom(user, examId, subjectId, maxPlayers);
+      setFriendRoomData(room);
+      setShowFriendModal(true);
+    }
   };
 
   const handleJoinFriendRoom = (code: string) => {
     if (!user) return;
-    socket.emit('join_friend_room', {
-      roomCode: code,
-      userId: user.id
-    });
+    if (socket && socket.connected) {
+      socket.emit('join_friend_room', {
+        roomCode: code,
+        userId: user.id
+      });
+    } else {
+      const room = localGameEngine.createFriendRoom(user);
+      room.roomCode = code;
+      setFriendRoomData(room);
+    }
+  };
+
+  const handleAddBotLocal = () => {
+    if (!friendRoomData) return;
+    const updated = localGameEngine.addBotToRoom(friendRoomData);
+    setFriendRoomData(updated);
+  };
+
+  const handleStartRoomBattleLocal = (room: any) => {
+    if (!user || !room) return;
+    setShowFriendModal(false);
+
+    const contestantBots = room.members.filter((m: any) => m.userId !== user.id);
+
+    localGameEngine.startBattle(
+      {
+        examId: room.examId,
+        subjectId: room.subjectId,
+        user,
+        contestantBots
+      },
+      {
+        onMatched: (data) => {
+          setActiveBattleId(data.battleId);
+          setBattlePlayers({ player1: data.player1, player2: data.player2 });
+          setAllBattlePlayers(data.players || [data.player1, data.player2]);
+          setBattleResultData(null);
+          setRematchRequested(false);
+          setOpponentRematchReady(false);
+          setMyScore(0);
+          setOpponentScore(0);
+          setTotalQuestions(data.totalQuestions);
+          setShowVSModal(true);
+          setVsData({
+            player1: data.player1,
+            player2: data.player2,
+            countdown: null
+          });
+        },
+        onCountdown: (data) => {
+          setVsData(prev => prev ? {
+            ...prev,
+            countdown: data.count,
+            countdownMessage: data.message
+          } : null);
+        },
+        onQuestionStart: (data) => {
+          setShowVSModal(false);
+          setCurrentQuestion(data.question);
+          setQuestionIndex(data.questionIndex);
+          setTotalQuestions(data.totalQuestions);
+          setRemainingSeconds(data.timeLimitSeconds);
+          setOpponentAnswered(false);
+          setQuestionResolution(null);
+          if (data.players) setAllBattlePlayers(data.players);
+        },
+        onTimerTick: (data) => {
+          setRemainingSeconds(data.remainingSeconds);
+        },
+        onOpponentStatus: (data) => {
+          setOpponentAnswered(data.hasAnswered);
+          if (data.playersAnswered) {
+            setAllBattlePlayers(prev => prev.map(p => {
+              const match = data.playersAnswered?.find((pa: any) => pa.userId === p.userId);
+              return match ? { ...p, answered: match.answered } : p;
+            }));
+          }
+        },
+        onQuestionResolved: (data) => {
+          setQuestionResolution(data);
+          setMyScore(data.yourScore);
+          setOpponentScore(data.opponentScore);
+          if (data.allPlayers) setAllBattlePlayers(data.allPlayers);
+        },
+        onBattleFinished: (data) => {
+          setCurrentQuestion(null);
+          setQuestionResolution(null);
+          setBattleResultData(data);
+          refreshUser();
+        }
+      }
+    );
   };
 
   return (
     <div className="min-h-screen bg-arena-bg text-slate-100 flex flex-col font-sans">
-      <Header onOpenAuth={() => setShowAuthModal(true)} />
+      <Header onOpenAuth={() => setShowAuthModal(true)} onNavigateTab={setActiveTab} />
 
       <main className="flex-1 w-full max-w-4xl mx-auto">
-        {currentQuestion && activeBattleId && vsData ? (
+        {currentQuestion && activeBattleId && battlePlayers ? (
           <BattleScreen
             battleId={activeBattleId}
             question={currentQuestion}
             questionIndex={questionIndex}
             totalQuestions={totalQuestions}
             myUserId={user?.id || ''}
-            player1={vsData.player1}
-            player2={vsData.player2}
+            player1={battlePlayers.player1}
+            player2={battlePlayers.player2}
             allPlayers={allBattlePlayers}
             myScore={myScore}
             opponentScore={opponentScore}
@@ -275,7 +496,13 @@ export const App: React.FC = () => {
             {activeTab === 'home' && (
               <HomeDashboard
                 onStartQuickBattle={handleStartQuickBattle}
-                onOpenFriendRoom={() => setShowFriendModal(true)}
+                onOpenFriendRoom={() => {
+                  if (!friendRoomData && user) {
+                    handleCreateFriendRoom();
+                  } else {
+                    setShowFriendModal(true);
+                  }
+                }}
                 onOpenPractice={() => setActiveTab('practice')}
                 onNavigateTab={setActiveTab}
                 isSearching={isSearching}
@@ -285,7 +512,7 @@ export const App: React.FC = () => {
 
             {activeTab === 'battle' && (
               <BattleHubView
-                onStartBattle={handleStartQuickBattle}
+                onStartBattle={(exId, subId) => handleStartQuickBattle(exId, subId)}
                 isSearching={isSearching}
                 onCancelSearch={handleCancelSearch}
               />
@@ -303,7 +530,7 @@ export const App: React.FC = () => {
         <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
       )}
 
-      {vsData && !currentQuestion && (
+      {showVSModal && vsData && (
         <VSModal
           player1={vsData.player1}
           player2={vsData.player2}
@@ -333,6 +560,8 @@ export const App: React.FC = () => {
           roomData={friendRoomData}
           onCreateRoom={handleCreateFriendRoom}
           onJoinRoom={handleJoinFriendRoom}
+          onAddBotLocal={handleAddBotLocal}
+          onStartRoomBattleLocal={handleStartRoomBattleLocal}
         />
       )}
 
