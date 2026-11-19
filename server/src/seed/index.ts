@@ -104,32 +104,29 @@ export async function runSeed() {
     const subId = subjectMap[q.subject_slug] || 'sub-math';
     const topId = topicMap[q.topic_slug] || 'top-percentage';
 
-    const existing = db.queryOne('SELECT id FROM questions WHERE id = ?', [qId]);
-    if (!existing) {
-      db.run(`
-        INSERT INTO questions (
-          id, exam_id, subject_id, topic_id, difficulty,
-          question_en, question_hi,
-          option_a_en, option_a_hi,
-          option_b_en, option_b_hi,
-          option_c_en, option_c_hi,
-          option_d_en, option_d_hi,
-          correct_option,
-          explanation_en, explanation_hi,
-          pyq_source, is_verified
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `, [
-        qId, examId, subId, topId, q.difficulty,
-        q.question_en, q.question_hi,
-        q.option_a_en, q.option_a_hi,
-        q.option_b_en, q.option_b_hi,
-        q.option_c_en, q.option_c_hi,
-        q.option_d_en, q.option_d_hi,
-        q.correct_option,
-        q.explanation_en, q.explanation_hi,
-        q.pyq_source
-      ]);
-    }
+    db.run(`
+      INSERT OR REPLACE INTO questions (
+        id, exam_id, subject_id, topic_id, difficulty,
+        question_en, question_hi,
+        option_a_en, option_a_hi,
+        option_b_en, option_b_hi,
+        option_c_en, option_c_hi,
+        option_d_en, option_d_hi,
+        correct_option,
+        explanation_en, explanation_hi,
+        pyq_source, is_verified
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `, [
+      qId, examId, subId, topId, q.difficulty,
+      q.question_en, q.question_hi,
+      q.option_a_en, q.option_a_hi,
+      q.option_b_en, q.option_b_hi,
+      q.option_c_en, q.option_c_hi,
+      q.option_d_en, q.option_d_hi,
+      q.correct_option,
+      q.explanation_en, q.explanation_hi,
+      q.pyq_source
+    ]);
   }
   console.log(`✅ Seeded ${SEED_QUESTIONS.length} Questions with full bilingual text & authentic explanations.`);
 
