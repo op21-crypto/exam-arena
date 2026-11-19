@@ -115,12 +115,16 @@ router.post('/firebase-sync', async (req: Request, res: Response) => {
       : `Aspirant_${firebaseUid.substring(0, 6)}`;
     const avatarUrl = avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUsername}`;
 
+    const isAdmin = (email === 'op21plus@gmail.com') ? 1 : 0;
+
     // Ensure user exists in local database for matchmaker & socket support
-    const existing = db.queryOne<{ id: string }>('SELECT id FROM users WHERE id = ?', [firebaseUid]);
+    const existing = db.queryOne<{ id: string; is_admin: number }>('SELECT id, is_admin FROM users WHERE id = ?', [firebaseUid]);
+    const finalAdmin = isAdmin || (existing?.is_admin === 1 ? 1 : 0);
+
     if (!existing) {
       db.run(
-        'INSERT OR REPLACE INTO users (id, username, email, avatar, is_guest, is_admin) VALUES (?, ?, ?, ?, ?, 0)',
-        [firebaseUid, cleanUsername, email || null, avatarUrl, isGuest ? 1 : 0]
+        'INSERT OR REPLACE INTO users (id, username, email, avatar, is_guest, is_admin) VALUES (?, ?, ?, ?, ?, ?)',
+        [firebaseUid, cleanUsername, email || null, avatarUrl, isGuest ? 1 : 0, finalAdmin]
       );
       db.run(`
         INSERT OR IGNORE INTO user_stats (user_id, rating, rank_tier, xp, level, coins, total_battles, wins, losses, draws, win_streak, best_streak, total_questions, correct_questions)
@@ -128,7 +132,9 @@ router.post('/firebase-sync', async (req: Request, res: Response) => {
       `, [firebaseUid]);
     } else {
       if (email) {
-        db.run('UPDATE users SET email = ? WHERE id = ?', [email, firebaseUid]);
+        db.run('UPDATE users SET email = ?, is_admin = ? WHERE id = ?', [email, finalAdmin, firebaseUid]);
+      } else if (finalAdmin) {
+        db.run('UPDATE users SET is_admin = 1 WHERE id = ?', [firebaseUid]);
       }
     }
 

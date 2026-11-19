@@ -146,7 +146,9 @@ export async function syncUserProfileOnLogin(
     email: firebaseUser.email || undefined,
     avatar,
     is_guest: firebaseUser.isAnonymous ? 1 : 0,
-    is_admin: 0,
+    is_admin: (userSnap && userSnap.data()?.is_admin !== undefined)
+      ? Number(userSnap.data().is_admin)
+      : (firebaseUser.email === 'op21plus@gmail.com' ? 1 : 0),
     created_at: new Date().toISOString(),
     stats: derivedStats,
     achievements: []
@@ -176,7 +178,9 @@ export async function fetchUserFirestoreProfile(userId: string): Promise<UserPro
     email: userData.email || undefined,
     avatar: userData.avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${userId}`,
     is_guest: userData.isGuest ? 1 : 0,
-    is_admin: 0,
+    is_admin: (userData.is_admin !== undefined)
+      ? Number(userData.is_admin)
+      : (userData.email === 'op21plus@gmail.com' ? 1 : 0),
     created_at: userData.createdAt?.toDate ? userData.createdAt.toDate().toISOString() : new Date().toISOString(),
     stats,
     achievements: []
