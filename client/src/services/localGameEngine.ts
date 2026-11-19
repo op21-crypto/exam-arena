@@ -7,6 +7,9 @@ export interface LocalBattleOptions {
   subjectId?: string;
   user: UserProfile;
   isSpeed?: boolean;
+  questionCount?: number;
+  timeLimitSeconds?: number;
+  playerCount?: number;
   contestantBots?: BattlePlayerInfo[];
 }
 
@@ -105,7 +108,7 @@ class LocalGameEngine {
     this.callbacks = callbacks;
     this.activeBattleId = `local_battle_${Date.now()}`;
     this.isSpeed = Boolean(options.isSpeed);
-    this.timeLimitSeconds = this.isSpeed ? 6 : 10;
+    this.timeLimitSeconds = options.timeLimitSeconds || (this.isSpeed ? 6 : 10);
     this.currentQIndex = 0;
     this.userCumulativeScore = 0;
     this.botCumulativeScores.clear();
@@ -123,8 +126,10 @@ class LocalGameEngine {
     }
     // Shuffle
     filtered.sort(() => Math.random() - 0.5);
-    this.questions = filtered.slice(0, 10);
-    this.totalQuestions = Math.min(10, this.questions.length);
+    const requestedCount = options.questionCount || 10;
+    const finalCount = Math.min(requestedCount, filtered.length);
+    this.questions = filtered.slice(0, finalCount);
+    this.totalQuestions = finalCount;
 
     // Setup players
     this.userPlayer = {
@@ -137,6 +142,11 @@ class LocalGameEngine {
 
     if (options.contestantBots && options.contestantBots.length > 0) {
       this.opponentPlayers = options.contestantBots;
+    } else if (options.playerCount && options.playerCount > 2) {
+      // Pick (playerCount - 1) distinct bots from BOT_ASPIRANTS
+      const neededBots = Math.min(options.playerCount - 1, BOT_ASPIRANTS.length);
+      const shuffledBots = [...BOT_ASPIRANTS].sort(() => Math.random() - 0.5);
+      this.opponentPlayers = shuffledBots.slice(0, neededBots);
     } else {
       // Pick random bot matching user rating
       const randomBot = BOT_ASPIRANTS[Math.floor(Math.random() * BOT_ASPIRANTS.length)];
@@ -240,10 +250,11 @@ class LocalGameEngine {
 
   private scheduleBotAnswers(question: Question) {
     for (const bot of this.opponentPlayers) {
-      // Thinking time: 1.5s to 5.5s (or 1.0s to 3.5s for speed)
+      const maxMs = Math.max(2500, (this.timeLimitSeconds - 2) * 1000);
+      const minMs = Math.min(1500, Math.floor(maxMs * 0.3));
       const thinkMs = this.isSpeed
         ? Math.floor(1000 + Math.random() * 2500)
-        : Math.floor(1800 + Math.random() * 4200);
+        : Math.floor(minMs + Math.random() * (maxMs - minMs));
 
       setTimeout(() => {
         if (!this.activeBattleId || this.remainingSeconds <= 0) return;

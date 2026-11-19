@@ -22,6 +22,7 @@ export interface FirestoreRoomData {
   player1_id: string; // Required by firestore.rules
   hostUserId: string;
   maxPlayers: number;
+  questionCount?: number;
   examId: string;
   subjectId: string;
   status: 'waiting' | 'countdown' | 'in_battle' | 'finished';
@@ -71,7 +72,9 @@ class MultiplayerRoomService {
     user: UserProfile,
     examId: string = 'exam-cgl',
     subjectId: string = 'sub-math',
-    maxPlayers: number = 4
+    maxPlayers: number = 4,
+    questionCount: number = 10,
+    timeLimitSeconds: number = 10
   ): Promise<FirestoreRoomData> {
     const fbUid = await this.ensureAuth();
     const randomSuffix = Math.floor(1000 + Math.random() * 9000);
@@ -95,13 +98,14 @@ class MultiplayerRoomService {
       player1_id: fbUid,
       hostUserId: user.id,
       maxPlayers,
+      questionCount,
       examId,
       subjectId,
       status: 'waiting',
       members: [hostMember],
       currentQuestionIndex: 0,
       questions: [],
-      timeLimitSeconds: 10,
+      timeLimitSeconds,
       answers: {},
       scores: { [user.id]: 0 },
       createdAt: Date.now(),
@@ -297,7 +301,8 @@ class MultiplayerRoomService {
       if (matchExam.length >= 5) pool = matchExam;
     }
     pool.sort(() => Math.random() - 0.5);
-    const selectedQuestions: SanitizedQuestion[] = pool.slice(0, 10).map(q => ({
+    const count = data.questionCount || 10;
+    const selectedQuestions: SanitizedQuestion[] = pool.slice(0, count).map(q => ({
       id: q.id,
       exam_id: q.exam_id,
       subject_id: q.subject_id,

@@ -3,7 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import { Question } from '../types';
 import { BUNDLED_QUESTIONS } from '../data/bundledQuestions';
 import { sound } from '../sound/soundEngine';
-import { BookOpen, CheckCircle2, XCircle, ArrowRight, ArrowLeft, RefreshCw, Globe, Sparkles, Award } from 'lucide-react';
+import {
+  BookOpen, CheckCircle2, XCircle, ArrowRight, ArrowLeft,
+  RefreshCw, Globe, Sparkles, Award, Shuffle, ChevronLeft, ChevronRight, Target
+} from 'lucide-react';
 
 interface PracticeViewProps {
   onNavigateTab?: (tab: any) => void;
@@ -15,41 +18,63 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
-  const [filterSubject, setFilterSubject] = useState<string>('');
+  const [filterExam, setFilterExam] = useState<string>('all');
+  const [filterSubject, setFilterSubject] = useState<string>('all');
   const [stats, setStats] = useState({ correct: 0, total: 0 });
+
+  const examFilters = [
+    { id: 'all', label: lang === 'hi' ? 'सभी 2025 परीक्षाएं' : 'All 2025 Exams', icon: '⚡' },
+    { id: 'exam-cgl', label: 'SSC CGL 2025', icon: '🏛️' },
+    { id: 'exam-chsl', label: 'SSC CHSL 2025', icon: '📜' },
+    { id: 'exam-cpo', label: 'SSC CPO 2025', icon: '🛡️' },
+  ];
+
+  const subjectFilters = [
+    { id: 'all', label: lang === 'hi' ? 'सभी विषय' : 'All Subjects', icon: '✨' },
+    { id: 'sub-math', label: lang === 'hi' ? 'गणित (Quant)' : 'Mathematics', icon: '📐' },
+    { id: 'sub-reasoning', label: lang === 'hi' ? 'तर्कशक्ति (Reasoning)' : 'Reasoning', icon: '🧩' },
+    { id: 'sub-english', label: lang === 'hi' ? 'अंग्रेजी (English)' : 'English', icon: '📖' },
+    { id: 'sub-gk', label: lang === 'hi' ? 'सामान्य ज्ञान (GK/GS)' : 'General Awareness', icon: '🌍' },
+  ];
 
   const fetchPracticeQuestions = async () => {
     setLoading(true);
     setSelectedOption(null);
     setCurrentIndex(0);
+
     try {
-      let url = '/api/questions/practice?limit=15';
-      if (filterSubject) url += `&subjectId=${filterSubject}`;
+      let url = '/api/questions/practice?limit=100';
+      if (filterExam && filterExam !== 'all') url += `&examId=${filterExam}`;
+      if (filterSubject && filterSubject !== 'all') url += `&subjectId=${filterSubject}`;
       const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.questions && data.questions.length > 0) {
           setQuestions(data.questions);
+          setLoading(false);
           return;
         }
       }
     } catch (err) {
       console.warn('Practice API fallback to bundled questions:', err);
-    } finally {
-      // Resilient fallback to BUNDLED_QUESTIONS
-      let localFiltered = [...BUNDLED_QUESTIONS];
-      if (filterSubject) {
-        const match = localFiltered.filter(q => q.subject_id === filterSubject);
-        if (match.length > 0) localFiltered = match;
-      }
-      setQuestions(prev => prev.length > 0 ? prev : localFiltered);
-      setLoading(false);
     }
+
+    // Client-side fallback from BUNDLED_QUESTIONS
+    let pool = [...BUNDLED_QUESTIONS];
+    if (filterExam && filterExam !== 'all') {
+      pool = pool.filter(q => q.exam_id === filterExam);
+    }
+    if (filterSubject && filterSubject !== 'all') {
+      pool = pool.filter(q => q.subject_id === filterSubject);
+    }
+
+    setQuestions(pool);
+    setLoading(false);
   };
 
   useEffect(() => {
     fetchPracticeQuestions();
-  }, [filterSubject]);
+  }, [filterExam, filterSubject]);
 
   const currentQ = questions[currentIndex];
 
@@ -83,9 +108,24 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
       setCurrentIndex(currentIndex + 1);
       setSelectedOption(null);
     } else {
-      // Reload fresh questions
-      fetchPracticeQuestions();
+      setCurrentIndex(0);
+      setSelectedOption(null);
     }
+  };
+
+  const handlePrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+      setSelectedOption(null);
+    }
+  };
+
+  const handleShuffle = () => {
+    if (questions.length === 0) return;
+    const shuffled = [...questions].sort(() => Math.random() - 0.5);
+    setQuestions(shuffled);
+    setCurrentIndex(0);
+    setSelectedOption(null);
   };
 
   const letters = ['A', 'B', 'C', 'D'];
@@ -105,9 +145,9 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 pb-24 flex flex-col gap-4">
-      {/* Back to Home Button */}
-      {onNavigateTab && (
-        <div>
+      {/* 0. Top Navigation & Header */}
+      <div className="flex items-center justify-between">
+        {onNavigateTab ? (
           <button
             onClick={() => onNavigateTab('home')}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-gaming font-bold transition-all active:scale-95 shadow-sm"
@@ -115,22 +155,35 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
             <ArrowLeft className="w-3.5 h-3.5 text-emerald-400" />
             <span>{lang === 'hi' ? '← मुख्य पृष्ठ (Home)' : '← Back to Home'}</span>
           </button>
-        </div>
-      )}
+        ) : <div />}
 
-      {/* Header */}
+        {/* Global Language Toggle */}
+        <button
+          onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-indigo-300 border border-slate-700 text-xs font-bold transition-colors shadow-sm"
+        >
+          <Globe className="w-3.5 h-3.5 text-indigo-400" />
+          <span>{lang === 'en' ? 'हिन्दी में बदलें' : 'Switch to English'}</span>
+        </button>
+      </div>
+
+      {/* 1. Practice Title & Accuracy Banner */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-gaming font-black text-2xl text-white flex items-center gap-2">
             <BookOpen className="w-6 h-6 text-emerald-400" />
-            PRACTICE DRILL
+            {lang === 'hi' ? '2025 PYQ अभ्यास ड्रिल' : '2025 PYQ PRACTICE DRILL'}
           </h1>
-          <p className="text-xs text-slate-400">Untimed practice with comprehensive bilingual explanations</p>
+          <p className="text-xs text-slate-400">
+            {lang === 'hi'
+              ? 'SSC CGL, CHSL, CPO 2025 के प्रामाणिक प्रश्न विषयवार अभ्यास करें'
+              : 'Untimed practice of SSC CGL, CHSL, CPO 2025 with bilingual explanations'}
+          </p>
         </div>
 
-        {/* Accuracy counter */}
+        {/* Accuracy badge */}
         {stats.total > 0 && (
-          <div className="bg-slate-900 border border-slate-700 px-3 py-1 rounded-xl text-xs font-gaming">
+          <div className="bg-slate-900 border border-slate-700 px-3 py-1 rounded-xl text-xs font-gaming shadow-sm">
             <span className="text-emerald-400 font-bold">{stats.correct}</span>
             <span className="text-slate-500"> / </span>
             <span className="text-slate-300 font-bold">{stats.total}</span>
@@ -141,104 +194,150 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
         )}
       </div>
 
-      {/* Subject Filter Pills */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs font-medium no-scrollbar">
-        <button
-          onClick={() => setFilterSubject('')}
-          className={`px-3 py-1.5 rounded-xl border whitespace-nowrap transition-colors ${
-            filterSubject === ''
-              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
-              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-          }`}
-        >
-          All Subjects
-        </button>
-        <button
-          onClick={() => setFilterSubject('sub-math')}
-          className={`px-3 py-1.5 rounded-xl border whitespace-nowrap transition-colors ${
-            filterSubject === 'sub-math'
-              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
-              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-          }`}
-        >
-          Mathematics
-        </button>
-        <button
-          onClick={() => setFilterSubject('sub-reasoning')}
-          className={`px-3 py-1.5 rounded-xl border whitespace-nowrap transition-colors ${
-            filterSubject === 'sub-reasoning'
-              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
-              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-          }`}
-        >
-          Reasoning
-        </button>
-        <button
-          onClick={() => setFilterSubject('sub-english')}
-          className={`px-3 py-1.5 rounded-xl border whitespace-nowrap transition-colors ${
-            filterSubject === 'sub-english'
-              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
-              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-          }`}
-        >
-          English
-        </button>
-        <button
-          onClick={() => setFilterSubject('sub-gk')}
-          className={`px-3 py-1.5 rounded-xl border whitespace-nowrap transition-colors ${
-            filterSubject === 'sub-gk'
-              ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
-              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
-          }`}
-        >
-          General Awareness
-        </button>
+      {/* 2. Target Examination Filter (SSC CGL 2025, CHSL 2025, CPO 2025) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-2.5 shadow-md flex flex-col gap-2">
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[11px] font-gaming font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Award className="w-3.5 h-3.5 text-amber-400" />
+            {lang === 'hi' ? 'परीक्षा चुनें (Exam 2025)' : 'Select Exam (2025 PYQs)'}
+          </span>
+          <span className="text-[10px] text-cyan-400 font-gaming font-bold bg-cyan-950/70 border border-cyan-800/80 px-2 py-0.5 rounded-full">
+            {questions.length} {lang === 'hi' ? 'प्रश्न उपलब्ध' : 'Questions'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+          {examFilters.map((ex) => {
+            const isSelected = filterExam === ex.id;
+            return (
+              <button
+                key={ex.id}
+                onClick={() => setFilterExam(ex.id)}
+                className={`py-2 px-2.5 rounded-xl border text-xs font-gaming font-bold flex items-center justify-center gap-1.5 transition-all ${
+                  isSelected
+                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-md ring-1 ring-indigo-400/40'
+                    : 'bg-slate-950/80 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                <span>{ex.icon}</span>
+                <span className="truncate">{ex.label}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
+      {/* 3. Subject-Wise Filter Pills */}
+      <div>
+        <label className="text-[11px] font-gaming font-bold text-slate-400 uppercase tracking-wider block mb-1.5 px-1">
+          {lang === 'hi' ? 'विषय चुनें (Subject-wise Filter)' : 'Filter by Subject'}
+        </label>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-medium no-scrollbar">
+          {subjectFilters.map((sub) => {
+            const isSelected = filterSubject === sub.id;
+            return (
+              <button
+                key={sub.id}
+                onClick={() => setFilterSubject(sub.id)}
+                className={`px-3 py-1.5 rounded-xl border whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-md font-bold'
+                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                }`}
+              >
+                <span>{sub.icon}</span>
+                <span>{sub.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 4. Question Drill View */}
       {loading ? (
         <div className="bg-arena-card border border-arena-border rounded-2xl p-8 flex flex-col items-center justify-center text-center">
-          <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
-          <p className="text-sm text-slate-300 font-gaming">Loading practice questions...</p>
+          <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mb-3" />
+          <p className="text-sm text-slate-300 font-gaming">Loading 2025 PYQ questions...</p>
         </div>
       ) : !currentQ ? (
-        <div className="bg-arena-card border border-arena-border rounded-2xl p-8 text-center">
-          <p className="text-sm text-slate-400">No questions available for this filter.</p>
+        <div className="bg-arena-card border border-arena-border rounded-2xl p-8 text-center flex flex-col items-center">
+          <p className="text-sm text-slate-400 mb-3">No questions found matching this filter combination.</p>
           <button
-            onClick={() => fetchPracticeQuestions()}
-            className="mt-3 px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-gaming font-bold"
+            onClick={() => {
+              setFilterExam('all');
+              setFilterSubject('all');
+            }}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-gaming font-bold shadow-md"
           >
-            Retry
+            {lang === 'hi' ? 'सभी प्रश्न रीसेट करें' : 'Reset All Filters'}
           </button>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
-          {/* Question Card */}
+          {/* Question Navigator Toolbar */}
+          <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 px-3 py-2 rounded-xl text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-gaming font-bold text-white text-xs">
+                {lang === 'hi' ? 'प्रश्न' : 'Q'} {currentIndex + 1} / {questions.length}
+              </span>
+              <span className="text-[11px] text-slate-500">•</span>
+              <span className="text-[11px] text-cyan-400 font-semibold truncate max-w-[140px] sm:max-w-xs">
+                {currentQ.topic_id?.toUpperCase()}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handlePrev}
+                disabled={currentIndex === 0}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 border border-slate-700 transition-colors"
+                title="Previous Question"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <button
+                onClick={handleShuffle}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                title="Shuffle Questions"
+              >
+                <Shuffle className="w-4 h-4 text-purple-400" />
+              </button>
+
+              <button
+                onClick={handleNext}
+                disabled={currentIndex === questions.length - 1}
+                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 border border-slate-700 transition-colors"
+                title="Next Question"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Question Card */}
           <div className="bg-arena-card border border-arena-border rounded-2xl p-4 sm:p-5 shadow-xl relative">
-            <div className="flex items-center justify-between mb-3 text-xs">
-              <div className="flex items-center gap-2">
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md font-semibold text-[11px]">
-                  {currentQ.pyq_source || 'Official PYQ'}
+            <div className="flex items-center justify-between mb-3 text-xs flex-wrap gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-lg font-gaming font-bold text-[11px] shadow-sm">
+                  {currentQ.pyq_source || 'SSC 2025 PYQ'}
                 </span>
-                <span className="text-[11px] text-slate-400 capitalize">
+                <span className="bg-slate-800 text-slate-400 border border-slate-700 px-2 py-0.5 rounded-lg text-[10px] uppercase font-bold">
                   {currentQ.difficulty}
                 </span>
               </div>
 
-              <button
-                onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
-                className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800"
-              >
-                <Globe className="w-3.5 h-3.5" />
-                <span>{lang === 'en' ? 'हिन्दी' : 'English'}</span>
-              </button>
+              <span className="text-[11px] text-indigo-400 font-gaming">
+                {currentQ.exam_id === 'exam-cgl' ? '🏛️ CGL' : currentQ.exam_id === 'exam-chsl' ? '📜 CHSL' : '🛡️ CPO'}
+              </span>
             </div>
 
-            <h2 className="text-sm sm:text-base font-medium text-slate-100 leading-relaxed min-h-[3rem]">
+            <h2 className="text-sm sm:text-base font-semibold text-slate-100 leading-relaxed min-h-[3rem]">
               {lang === 'hi' ? (currentQ.question_hi || currentQ.question_en) : currentQ.question_en}
             </h2>
           </div>
 
-          {/* Options */}
+          {/* 4 Interactive Options */}
           <div className="grid grid-cols-1 gap-2.5">
             {[0, 1, 2, 3].map((optIdx) => {
               const isSelected = selectedOption === optIdx;
@@ -249,7 +348,7 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
 
               if (selectedOption !== null) {
                 if (isCorrect) {
-                  optionStyle = 'bg-emerald-950/80 border-emerald-500 text-emerald-200 neon-border-blue';
+                  optionStyle = 'bg-emerald-950/80 border-emerald-500 text-emerald-200 shadow-md ring-1 ring-emerald-500/40';
                 } else if (isSelected) {
                   optionStyle = 'bg-rose-950/80 border-rose-500 text-rose-200';
                 } else {
@@ -262,10 +361,10 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
                   key={optIdx}
                   onClick={() => handleSelect(optIdx)}
                   disabled={selectedOption !== null}
-                  className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all duration-150 ${optionStyle}`}
+                  className={`w-full flex items-center justify-between p-3.5 rounded-xl border text-left transition-all duration-150 active:scale-99 ${optionStyle}`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center font-gaming font-bold text-xs text-slate-400">
+                    <span className="w-7 h-7 rounded-lg bg-slate-800 flex items-center justify-center font-gaming font-bold text-xs text-slate-300">
                       {letters[optIdx]}
                     </span>
                     <span className="text-xs sm:text-sm font-medium">{text}</span>
@@ -283,35 +382,50 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
             })}
           </div>
 
-          {/* Explanation & Next button */}
+          {/* Detailed Explanation & Forward CTA */}
           {selectedOption !== null && (
             <div className="bg-slate-900/95 border border-indigo-500/30 rounded-2xl p-4 shadow-xl animate-in fade-in duration-200 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 {selectedOption === currentQ.correct_option ? (
-                  <span className="flex items-center gap-1 text-emerald-400 font-gaming font-bold text-sm">
-                    <CheckCircle2 className="w-4 h-4" /> Correct Answer! (+10 XP)
+                  <span className="flex items-center gap-1.5 text-emerald-400 font-gaming font-bold text-sm">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {lang === 'hi' ? 'सही उत्तर! (+10 XP)' : 'Correct Answer! (+10 XP)'}
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-rose-400 font-gaming font-bold text-sm">
-                    <XCircle className="w-4 h-4" /> Incorrect (+3 Practice XP)
+                  <span className="flex items-center gap-1.5 text-rose-400 font-gaming font-bold text-sm">
+                    <XCircle className="w-4 h-4" />
+                    {lang === 'hi' ? 'गलत उत्तर (+3 अभ्यास XP)' : 'Incorrect (+3 Practice XP)'}
                   </span>
                 )}
               </div>
 
-              <div className="text-xs text-slate-300 bg-slate-950 p-3 rounded-xl border border-slate-800 leading-relaxed">
-                <span className="font-bold text-indigo-300 block mb-1">
-                  {lang === 'hi' ? 'विस्तृत समाधान:' : 'Detailed Explanation:'}
+              <div className="text-xs text-slate-200 bg-slate-950 p-3.5 rounded-xl border border-slate-800 leading-relaxed">
+                <span className="font-bold text-indigo-300 block mb-1.5 text-xs font-gaming">
+                  {lang === 'hi' ? 'विस्तृत समाधान व सूत्र व्याख्या:' : 'Detailed Solution & Formula Explanation:'}
                 </span>
-                {lang === 'hi' ? currentQ.explanation_hi : currentQ.explanation_en}
+                <p className="whitespace-pre-line">
+                  {lang === 'hi' ? currentQ.explanation_hi : currentQ.explanation_en}
+                </p>
               </div>
 
-              <button
-                onClick={handleNext}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-gaming font-bold text-sm flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-95"
-              >
-                <span>Next Practice Question</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={handlePrev}
+                  disabled={currentIndex === 0}
+                  className="py-3 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-gaming font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>{lang === 'hi' ? 'पिछला प्रश्न' : 'Previous Question'}</span>
+                </button>
+
+                <button
+                  onClick={handleNext}
+                  className="py-3 px-3 rounded-xl bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-gaming font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg transition-transform active:scale-95"
+                >
+                  <span>{lang === 'hi' ? 'अगला प्रश्न' : 'Next Question'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           )}
         </div>

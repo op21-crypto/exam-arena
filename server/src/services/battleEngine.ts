@@ -60,6 +60,8 @@ export interface ActiveBattle {
   botTimeout: NodeJS.Timeout | null;
   state: 'vs' | 'countdown' | 'question' | 'review' | 'ended';
   roomCode?: string;
+  questionCount?: number;
+  timeLimitSeconds?: number;
 }
 
 export const activeBattles = new Map<string, ActiveBattle>();
@@ -77,11 +79,20 @@ export function calculateSpeedBonus(elapsedMs: number, isCorrect: boolean): numb
 export function startBattleWithPlayers(
   io: Server,
   playerConfigs: { userId: string; socketId: string; isBot?: boolean; customProfile?: any }[],
-  options: { mode: 'quick' | 'friend' | 'subject' | 'practice'; examId?: string; subjectId?: string; roomCode?: string }
+  options: {
+    mode: 'quick' | 'friend' | 'subject' | 'practice';
+    examId?: string;
+    subjectId?: string;
+    roomCode?: string;
+    questionCount?: number;
+    timeLimitSeconds?: number;
+  }
 ): ActiveBattle {
   const battleId = `battle-${uuidv4().substring(0, 8)}`;
+  const qLimit = options.questionCount || 10;
+  const timeLimit = options.timeLimitSeconds || 10;
 
-  // Fetch 10 questions for battle
+  // Fetch questions for battle
   let query = 'SELECT * FROM questions WHERE is_verified = 1';
   const params: any[] = [];
 
@@ -94,11 +105,11 @@ export function startBattleWithPlayers(
     params.push(options.subjectId);
   }
 
-  query += ' ORDER BY RANDOM() LIMIT 10';
+  query += ` ORDER BY RANDOM() LIMIT ${qLimit}`;
   let fetchedQuestions = db.query(query, params);
 
-  if (fetchedQuestions.length < 5) {
-    fetchedQuestions = db.query('SELECT * FROM questions WHERE is_verified = 1 ORDER BY RANDOM() LIMIT 10');
+  if (fetchedQuestions.length < Math.min(5, qLimit)) {
+    fetchedQuestions = db.query(`SELECT * FROM questions WHERE is_verified = 1 ORDER BY RANDOM() LIMIT ${qLimit}`);
   }
 
   const sanitizedQuestions: SanitizedQuestion[] = fetchedQuestions.map(q => ({
@@ -152,7 +163,9 @@ export function startBattleWithPlayers(
     questionStartTime: 0,
     timerInterval: null,
     botTimeout: null,
-    state: 'vs'
+    state: 'vs',
+    questionCount: qLimit,
+    timeLimitSeconds: timeLimit
   };
 
   activeBattles.set(battleId, battle);
@@ -240,13 +253,14 @@ export function advanceToQuestion(io: Server, battleId: string, qIndex: number) 
   });
 
   const currentQ = battle.sanitizedQuestions[qIndex];
+  const timeLimit = battle.timeLimitSeconds || 10;
 
   io.to(battleId).emit('question_start', {
     battleId,
     questionIndex: qIndex,
     totalQuestions: battle.sanitizedQuestions.length,
     question: currentQ,
-    timeLimitSeconds: 10,
+    timeLimitSeconds: timeLimit,
     startTime: battle.questionStartTime,
     players: battle.players.map(p => ({
       userId: p.userId,
@@ -263,15 +277,15 @@ export function advanceToQuestion(io: Server, battleId: string, qIndex: number) 
   // Schedule Bot answers if any bots are present
   battle.players.forEach(p => {
     if (p.isBot) {
-      // Simulate realistic human answer delay (1.8s - 6.2s)
-      const thinkTime = Math.floor(1800 + Math.random() * 4400);
+      // Simulate realistic human answer delay
+      const thinkTime = Math.floor(1500 + Math.random() * Math.max(2000, (timeLimit - 2) * 1000));
       battle.botTimeout = setTimeout(() => {
         simulateBotAnswer(io, battleId, p.userId);
       }, thinkTime);
     }
   });
 
-  let remainingSeconds = 10;
+  let remainingSeconds = timeLimit;
   battle.timerInterval = setInterval(() => {
     remainingSeconds -= 1;
     io.to(battleId).emit('timer_tick', { remainingSeconds });

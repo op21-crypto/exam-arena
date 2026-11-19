@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Swords, Target, Shield, Flame, BookOpen, ChevronRight, Zap, ArrowLeft } from 'lucide-react';
+import { Swords, Target, Shield, Flame, BookOpen, ChevronRight, Zap, ArrowLeft, Clock, HelpCircle, Users, Sliders } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface BattleHubViewProps {
-  onStartBattle: (examId: string, subjectId: string) => void;
+  onStartBattle: (examId: string, subjectId: string, customOptions?: { questionCount?: number; timeLimitSeconds?: number; playerCount?: number }) => void;
   isSearching: boolean;
   onCancelSearch: () => void;
   onNavigateTab?: (tab: any) => void;
@@ -37,6 +37,9 @@ export const BattleHubView: React.FC<BattleHubViewProps> = ({
 
   const [selectedExam, setSelectedExam] = useState<string>('exam-cgl');
   const [selectedSubject, setSelectedSubject] = useState<string>('all');
+  const [questionCount, setQuestionCount] = useState<number>(10);
+  const [timeLimitSeconds, setTimeLimitSeconds] = useState<number>(10);
+  const [playerCount, setPlayerCount] = useState<number>(2);
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 pb-24 flex flex-col gap-5">
@@ -129,6 +132,109 @@ export const BattleHubView: React.FC<BattleHubViewProps> = ({
         </div>
       </div>
 
+      {/* 3. Custom Match Rules (Questions, Time, Players) */}
+      <div className="bg-arena-card border border-arena-border rounded-2xl p-4 shadow-lg space-y-3.5">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-cyan-400" />
+            <span className="font-gaming font-bold text-sm text-white uppercase tracking-wider">
+              {lang === 'hi' ? 'चरण 3: कस्टम नियम (Custom Rules)' : 'Step 3: Custom Match Rules'}
+            </span>
+          </div>
+          <span className="text-[11px] font-gaming font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/30 px-2 py-0.5 rounded-lg">
+            {questionCount} Qs · {timeLimitSeconds}s · {playerCount === 2 ? '1v1' : `${playerCount}P`}
+          </span>
+        </div>
+
+        {/* Question Count Selector */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs text-slate-300 font-semibold flex items-center gap-1.5">
+              <HelpCircle className="w-3.5 h-3.5 text-indigo-400" />
+              {lang === 'hi' ? 'प्रश्नों की संख्या (Questions)' : 'Question Count'}
+            </label>
+            <span className="text-xs font-gaming font-bold text-cyan-400">{questionCount} Qs</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {[5, 10, 15, 20].map(num => (
+              <button
+                type="button"
+                key={num}
+                onClick={() => setQuestionCount(num)}
+                className={`py-2 rounded-xl font-gaming font-bold text-xs border transition-all active:scale-95 ${
+                  questionCount === num
+                    ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-900/40'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {num} Qs
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Time per Question Selector */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs text-slate-300 font-semibold flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              {lang === 'hi' ? 'प्रति प्रश्न समय (Time Limit)' : 'Time per Question'}
+            </label>
+            <span className="text-xs font-gaming font-bold text-amber-400">{timeLimitSeconds}s</span>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {[10, 15, 20, 30].map(sec => (
+              <button
+                type="button"
+                key={sec}
+                onClick={() => setTimeLimitSeconds(sec)}
+                className={`py-2 rounded-xl font-gaming font-bold text-xs border transition-all active:scale-95 ${
+                  timeLimitSeconds === sec
+                    ? 'bg-amber-600 border-amber-500 text-white shadow-md shadow-amber-900/40'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {sec}s
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Players Selector */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs text-slate-300 font-semibold flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5 text-cyan-400" />
+              {lang === 'hi' ? 'खिलाड़ी संख्या (Players)' : 'Match Size / Players'}
+            </label>
+            <span className="text-xs font-gaming font-bold text-cyan-400">
+              {playerCount === 2 ? '1v1 Duel' : `${playerCount} Players`}
+            </span>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { count: 2, label: '1v1 Duel' },
+              { count: 3, label: '3 Trio' },
+              { count: 4, label: '4 Squad' },
+              { count: 6, label: '6 Battle' }
+            ].map(opt => (
+              <button
+                type="button"
+                key={opt.count}
+                onClick={() => setPlayerCount(opt.count)}
+                className={`py-2 rounded-xl font-gaming font-bold text-xs border transition-all active:scale-95 ${
+                  playerCount === opt.count
+                    ? 'bg-cyan-600 border-cyan-500 text-white shadow-md shadow-cyan-900/40'
+                    : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Action CTA */}
       <div className="pt-2">
         {isSearching ? (
@@ -141,11 +247,19 @@ export const BattleHubView: React.FC<BattleHubViewProps> = ({
           </button>
         ) : (
           <button
-            onClick={() => onStartBattle(selectedExam, selectedSubject === 'all' ? '' : selectedSubject)}
+            onClick={() => onStartBattle(
+              selectedExam,
+              selectedSubject === 'all' ? '' : selectedSubject,
+              { questionCount, timeLimitSeconds, playerCount }
+            )}
             className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:via-indigo-500 hover:to-purple-500 text-white font-gaming font-black text-lg flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/50 active:scale-98 transition-all"
           >
             <Swords className="w-5 h-5" />
-            <span>{lang === 'hi' ? '⚔️ 1V1 मुकाबला शुरू करें' : 'START 1V1 SUBJECT BATTLE'}</span>
+            <span>
+              {lang === 'hi'
+                ? `⚔️ मुकाबला शुरू करें (${questionCount}Q · ${timeLimitSeconds}s · ${playerCount === 2 ? '1v1' : `${playerCount}P`})`
+                : `START BATTLE (${questionCount}Q · ${timeLimitSeconds}s · ${playerCount === 2 ? '1v1' : `${playerCount}P`})`}
+            </span>
           </button>
         )}
       </div>

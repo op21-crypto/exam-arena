@@ -8,6 +8,8 @@ interface FriendRoomModalProps {
   roomData: {
     roomCode: string;
     maxPlayers?: number;
+    questionCount?: number;
+    timeLimitSeconds?: number;
     members?: {
       userId: string;
       username: string;
@@ -24,7 +26,7 @@ interface FriendRoomModalProps {
     subjectId?: string;
   } | null;
   onJoinRoom: (code: string) => void;
-  onCreateRoom: (examId?: string, subjectId?: string, maxPlayers?: number) => void;
+  onCreateRoom: (examId?: string, subjectId?: string, maxPlayers?: number, questionCount?: number, timeLimitSeconds?: number) => void;
   onAddBot?: () => void;
   onToggleReady?: (isReady: boolean) => void;
   onStartRoomBattle?: (roomData: any) => void;
@@ -46,6 +48,8 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
   const [selectedExam, setSelectedExam] = useState<string>('exam-cgl');
   const [selectedSubject, setSelectedSubject] = useState<string>('sub-math');
   const [maxPlayers, setMaxPlayers] = useState<number>(4);
+  const [questionCount, setQuestionCount] = useState<number>(10);
+  const [timeLimitSeconds, setTimeLimitSeconds] = useState<number>(10);
 
   // Normalize members list
   const members = roomData?.members || (roomData?.host ? [
@@ -194,6 +198,19 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
                 {lang === 'hi'
                   ? 'दोस्त इस लिंक पर क्लिक करके सीधे आपके रूम में शामिल हो सकते हैं!'
                   : 'Friends can tap your shared link to join your room instantly!'}
+              </div>
+
+              {/* Custom Battle Rules Badges */}
+              <div className="flex items-center justify-center gap-1.5 flex-wrap mt-2.5 pt-2 border-t border-slate-800">
+                <span className="px-2.5 py-1 rounded-lg bg-indigo-950/80 border border-indigo-700/50 text-[11px] font-gaming font-bold text-indigo-300">
+                  🎯 {roomData.questionCount || 10} {lang === 'hi' ? 'प्रश्न' : 'Qs'}
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-amber-950/80 border border-amber-700/50 text-[11px] font-gaming font-bold text-amber-300">
+                  ⏱️ {roomData.timeLimitSeconds || 10}s {lang === 'hi' ? 'प्रति प्रश्न' : '/ Q'}
+                </span>
+                <span className="px-2.5 py-1 rounded-lg bg-cyan-950/80 border border-cyan-700/50 text-[11px] font-gaming font-bold text-cyan-300">
+                  👥 {roomData.maxPlayers || 4} {lang === 'hi' ? 'खिलाड़ी' : 'Players Max'}
+                </span>
               </div>
             </div>
 
@@ -382,7 +399,7 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
                         onClick={() => setMaxPlayers(num)}
                         className={`py-2 rounded-xl border transition-colors ${
                           maxPlayers === num
-                            ? 'bg-purple-600 border-purple-500 text-white'
+                            ? 'bg-purple-600 border-purple-500 text-white shadow-md'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                         }`}
                       >
@@ -392,8 +409,64 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
                   </div>
                 </div>
 
+                {/* Custom Question Count */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-slate-400">
+                      {lang === 'hi' ? 'प्रश्नों की संख्या (Questions)' : 'Number of Questions'}
+                    </label>
+                    <span className="text-xs font-gaming font-bold text-cyan-400">
+                      {questionCount} {lang === 'hi' ? 'प्रश्न' : 'Questions'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 font-gaming font-bold text-xs">
+                    {[5, 10, 15, 20].map(num => (
+                      <button
+                        type="button"
+                        key={num}
+                        onClick={() => setQuestionCount(num)}
+                        className={`py-2 rounded-xl border transition-colors ${
+                          questionCount === num
+                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-md'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {num} Qs
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Time per Question */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-slate-400">
+                      {lang === 'hi' ? 'प्रति प्रश्न समय (Time Limit)' : 'Time per Question'}
+                    </label>
+                    <span className="text-xs font-gaming font-bold text-amber-400">
+                      {timeLimitSeconds}s
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2 font-gaming font-bold text-xs">
+                    {[10, 15, 20, 30].map(sec => (
+                      <button
+                        type="button"
+                        key={sec}
+                        onClick={() => setTimeLimitSeconds(sec)}
+                        className={`py-2 rounded-xl border transition-colors ${
+                          timeLimitSeconds === sec
+                            ? 'bg-amber-600 border-amber-500 text-white shadow-md'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {sec}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <button
-                  onClick={() => onCreateRoom(selectedExam, selectedSubject, maxPlayers)}
+                  onClick={() => onCreateRoom(selectedExam, selectedSubject, maxPlayers, questionCount, timeLimitSeconds)}
                   className="w-full mt-2 py-3.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-gaming font-bold text-base rounded-xl shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2"
                 >
                   <span>{lang === 'hi' ? 'बैटल रूम बनाएं' : 'Generate Battle Room'}</span>
