@@ -239,6 +239,43 @@ class MultiplayerRoomService {
     });
   }
 
+  public async leaveRoom(rawCode: string, userId: string): Promise<void> {
+    try {
+      const roomCode = this.normalizeRoomCode(rawCode);
+      const docId = `battle_${roomCode}`;
+      const docRef = doc(db, 'battles', docId);
+
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) return;
+
+      const data = snap.data() as FirestoreRoomData;
+      const remainingMembers = data.members.filter(m => m.userId !== userId);
+
+      if (remainingMembers.length === 0) {
+        await updateDoc(docRef, {
+          status: 'finished',
+          updatedAt: Date.now()
+        });
+      } else {
+        let nextHostUserId = data.hostUserId;
+        if (data.hostUserId === userId) {
+          const nextHuman = remainingMembers.find(m => !m.isBot) || remainingMembers[0];
+          nextHostUserId = nextHuman.userId;
+          remainingMembers.forEach(m => {
+            m.isHost = (m.userId === nextHostUserId);
+          });
+        }
+        await updateDoc(docRef, {
+          members: remainingMembers,
+          hostUserId: nextHostUserId,
+          updatedAt: Date.now()
+        });
+      }
+    } catch (err) {
+      console.warn('Error in leaveRoom:', err);
+    }
+  }
+
   public async startBattle(rawCode: string): Promise<void> {
     const roomCode = this.normalizeRoomCode(rawCode);
     const docId = `battle_${roomCode}`;

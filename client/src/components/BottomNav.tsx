@@ -10,18 +10,18 @@ interface BottomNavProps {
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) => {
-  const { user } = useAuth();
+  const { user, lang } = useAuth();
 
   const navItems = [
-    { id: 'home', label: 'Home', icon: Home },
-    { id: 'battle', label: 'Battle', icon: Swords },
-    { id: 'leaderboard', label: 'Ranks', icon: Trophy },
-    { id: 'practice', label: 'Practice', icon: BookOpen },
-    { id: 'profile', label: 'Profile', icon: User },
+    { id: 'home', label: lang === 'hi' ? 'होम' : 'Home', icon: Home },
+    { id: 'battle', label: lang === 'hi' ? 'मुकाबला' : 'Battle', icon: Swords },
+    { id: 'leaderboard', label: lang === 'hi' ? 'रैंकिंग' : 'Ranks', icon: Trophy },
+    { id: 'practice', label: lang === 'hi' ? 'अभ्यास' : 'Practice', icon: BookOpen },
+    { id: 'profile', label: lang === 'hi' ? 'प्रोफ़ाइल' : 'Profile', icon: User },
   ];
 
-  if (user?.is_admin) {
-    navItems.push({ id: 'admin', label: 'Admin', icon: ShieldCheck });
+  if (user?.is_admin === 1) {
+    navItems.push({ id: 'admin', label: lang === 'hi' ? 'व्यवस्थापक' : 'Admin', icon: ShieldCheck });
   }
 
   return (

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { socket } from '../socket/socket';
-import { Users, Copy, Check, Play, X, Share2, Bot, MessageCircle, ArrowRight, Swords } from 'lucide-react';
+import { Users, Copy, Check, Play, X, Share2, Bot, MessageCircle, ArrowRight, ArrowLeft, Swords } from 'lucide-react';
 
 interface FriendRoomModalProps {
   onClose: () => void;
@@ -297,6 +297,16 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
                   </span>
                 </button>
               )}
+
+              {/* Leave Room & Go Back Button */}
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 font-gaming font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-98 shadow-sm"
+              >
+                <ArrowLeft className="w-4 h-4 text-rose-400" />
+                <span>{lang === 'hi' ? '← लॉबी छोड़ें व होम पर लौटें (Leave Room)' : '← Leave Room & Return Home'}</span>
+              </button>
             </div>
           </div>
         ) : (
@@ -416,6 +426,16 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
                 </button>
               </div>
             )}
+
+            {/* Back / Close button */}
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full mt-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-gaming font-bold flex items-center justify-center gap-1.5 transition-all"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>{lang === 'hi' ? 'वापस जाएं (Back to Dashboard)' : 'Back to Dashboard'}</span>
+            </button>
           </div>
         )}
       </div>

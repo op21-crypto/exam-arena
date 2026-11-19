@@ -1,20 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { BattlePlayerInfo } from '../types';
 import { sound } from '../sound/soundEngine';
-import { Shield, Zap } from 'lucide-react';
+import { Shield, Zap, ArrowLeft } from 'lucide-react';
 
 interface VSModalProps {
   player1: BattlePlayerInfo;
   player2: BattlePlayerInfo;
   countdown: number | null;
   countdownMessage?: string;
+  onCancel?: () => void;
+  lang?: 'en' | 'hi';
 }
 
 export const VSModal: React.FC<VSModalProps> = ({
   player1,
   player2,
   countdown,
-  countdownMessage
+  countdownMessage,
+  onCancel,
+  lang = 'en'
 }) => {
   useEffect(() => {
     sound.playMatchFound();
@@ -120,6 +124,18 @@ export const VSModal: React.FC<VSModalProps> = ({
             <div className="text-sm text-slate-400 font-gaming tracking-wide animate-pulse">
               Preparing exam arena...
             </div>
+          )}
+
+          {/* Quick Cancel Match button */}
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="mt-6 flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-gaming font-bold shadow-lg transition-all active:scale-95"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>{lang === 'hi' ? '← मुकाबला रद्द करें (Cancel)' : '← Cancel & Exit'}</span>
+            </button>
           )}
         </div>
       </div>

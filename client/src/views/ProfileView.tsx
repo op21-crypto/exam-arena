@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Trophy, Flame, Coins, Zap, Target, Award, Clock, ArrowUpRight, ArrowDownRight, RefreshCw } from 'lucide-react';
+import { Shield, Trophy, Flame, Coins, Zap, Target, Award, Clock, ArrowUpRight, ArrowDownRight, RefreshCw, ArrowLeft } from 'lucide-react';
 
-export const ProfileView: React.FC = () => {
-  const { user, refreshUser } = useAuth();
+interface ProfileViewProps {
+  onNavigateTab?: (tab: any) => void;
+}
+
+export const ProfileView: React.FC<ProfileViewProps> = ({ onNavigateTab }) => {
+  const { user, lang, refreshUser } = useAuth();
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(true);
 
@@ -75,6 +79,19 @@ export const ProfileView: React.FC = () => {
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 pb-24 flex flex-col gap-4">
+      {/* Back to Home Button */}
+      {onNavigateTab && (
+        <div>
+          <button
+            onClick={() => onNavigateTab('home')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-gaming font-bold transition-all active:scale-95 shadow-sm"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-purple-400" />
+            <span>{lang === 'hi' ? '← मुख्य पृष्ठ (Home)' : '← Back to Home'}</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. Aspirant Dossier Card */}
       <div className="bg-arena-card border border-arena-border rounded-3xl p-5 shadow-xl relative overflow-hidden">
         <div className="flex items-center gap-4">

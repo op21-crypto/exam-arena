@@ -532,6 +532,12 @@ export const App: React.FC = () => {
   };
 
   const handleReturnHome = () => {
+    if (activeBattleId?.startsWith('ARENA-') && user) {
+      multiplayerRoomService.leaveRoom(activeBattleId, user.id);
+    }
+    if (activeBattleId && socket && socket.connected) {
+      socket.emit('leave_battle', { battleId: activeBattleId, userId: user?.id });
+    }
     multiplayerRoomService.unsubscribe();
     localGameEngine.stopActiveBattle();
     if (roomTimerRef.current) clearInterval(roomTimerRef.current);
@@ -542,6 +548,24 @@ export const App: React.FC = () => {
     setBattleResultData(null);
     setCurrentQuestion(null);
     setActiveTab('home');
+  };
+
+  const handleNavTabChange = (tab: NavTab) => {
+    if (activeBattleId || currentQuestion) {
+      if (activeBattleId?.startsWith('ARENA-') && user) {
+        multiplayerRoomService.leaveRoom(activeBattleId, user.id);
+      }
+      multiplayerRoomService.unsubscribe();
+      localGameEngine.stopActiveBattle();
+      if (roomTimerRef.current) clearInterval(roomTimerRef.current);
+      setActiveBattleId(null);
+      setBattlePlayers(null);
+      setShowVSModal(false);
+      setVsData(null);
+      setBattleResultData(null);
+      setCurrentQuestion(null);
+    }
+    setActiveTab(tab);
   };
 
   // Friend Room: Create
@@ -627,7 +651,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-arena-bg text-slate-100 flex flex-col font-sans">
-      <Header onOpenAuth={() => setShowAuthModal(true)} onNavigateTab={setActiveTab} />
+      <Header onOpenAuth={() => setShowAuthModal(true)} onNavigateTab={handleNavTabChange} />
 
       <main className="flex-1 w-full max-w-4xl mx-auto">
         {currentQuestion && activeBattleId && battlePlayers ? (
@@ -646,6 +670,7 @@ export const App: React.FC = () => {
             remainingSeconds={remainingSeconds}
             resolution={questionResolution}
             onSubmitAnswer={handleSubmitAnswer}
+            onQuitBattle={handleReturnHome}
             lang={lang}
             onToggleLang={() => setLang(lang === 'en' ? 'hi' : 'en')}
           />
@@ -662,7 +687,7 @@ export const App: React.FC = () => {
                   }
                 }}
                 onOpenPractice={() => setActiveTab('practice')}
-                onNavigateTab={setActiveTab}
+                onNavigateTab={handleNavTabChange}
                 isSearching={isSearching}
                 onCancelSearch={handleCancelSearch}
               />
@@ -673,20 +698,20 @@ export const App: React.FC = () => {
                 onStartBattle={(exId, subId) => handleStartQuickBattle(exId, subId)}
                 isSearching={isSearching}
                 onCancelSearch={handleCancelSearch}
+                onNavigateTab={handleNavTabChange}
               />
             )}
 
-            {activeTab === 'practice' && <PracticeView />}
-            {activeTab === 'leaderboard' && <LeaderboardView />}
-            {activeTab === 'profile' && <ProfileView />}
-            {activeTab === 'admin' && user?.is_admin === 1 && <AdminPanel />}
+            {activeTab === 'practice' && <PracticeView onNavigateTab={handleNavTabChange} />}
+            {activeTab === 'leaderboard' && <LeaderboardView onNavigateTab={handleNavTabChange} />}
+            {activeTab === 'profile' && <ProfileView onNavigateTab={handleNavTabChange} />}
+            {activeTab === 'admin' && user?.is_admin === 1 && <AdminPanel onNavigateTab={handleNavTabChange} />}
           </>
         )}
       </main>
 
-      {!currentQuestion && (
-        <BottomNav activeTab={activeTab} onChangeTab={setActiveTab} />
-      )}
+      {/* Persistent Bottom Navigation: Always accessible and functional */}
+      <BottomNav activeTab={activeTab} onChangeTab={handleNavTabChange} />
 
       {showVSModal && vsData && (
         <VSModal
@@ -694,6 +719,8 @@ export const App: React.FC = () => {
           player2={vsData.player2}
           countdown={vsData.countdown}
           countdownMessage={vsData.countdownMessage}
+          onCancel={handleReturnHome}
+          lang={lang}
         />
       )}
 
@@ -712,6 +739,9 @@ export const App: React.FC = () => {
       {showFriendModal && (
         <FriendRoomModal
           onClose={() => {
+            if (friendRoomData?.roomCode && user) {
+              multiplayerRoomService.leaveRoom(friendRoomData.roomCode, user.id);
+            }
             multiplayerRoomService.unsubscribe();
             setShowFriendModal(false);
             setFriendRoomData(null);

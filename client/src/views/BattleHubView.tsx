@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
-import { Swords, Target, Shield, Flame, BookOpen, ChevronRight, Zap } from 'lucide-react';
+import { Swords, Target, Shield, Flame, BookOpen, ChevronRight, Zap, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface BattleHubViewProps {
   onStartBattle: (examId: string, subjectId: string) => void;
   isSearching: boolean;
   onCancelSearch: () => void;
+  onNavigateTab?: (tab: any) => void;
 }
 
 export const BattleHubView: React.FC<BattleHubViewProps> = ({
   onStartBattle,
   isSearching,
-  onCancelSearch
+  onCancelSearch,
+  onNavigateTab
 }) => {
   const { lang } = useAuth();
 
@@ -38,6 +40,19 @@ export const BattleHubView: React.FC<BattleHubViewProps> = ({
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 pb-24 flex flex-col gap-5">
+      {/* Back Button */}
+      {onNavigateTab && (
+        <div>
+          <button
+            onClick={() => onNavigateTab('home')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-gaming font-bold transition-all active:scale-95 shadow-sm"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-cyan-400" />
+            <span>{lang === 'hi' ? '← मुख्य पृष्ठ (Home)' : '← Back to Home'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Title */}
       <div className="flex items-center justify-between">
         <div>

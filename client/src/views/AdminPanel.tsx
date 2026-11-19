@@ -3,10 +3,14 @@ import { useAuth } from '../context/AuthContext';
 import {
   ShieldCheck, Plus, Trash2, Edit2, Upload, BarChart3, Users, AlertTriangle,
   Check, RefreshCw, FileText, Swords, X, Search, Filter, Ban, Trophy,
-  Coins, Zap, Shield, ArrowUpRight, Flame, CheckCircle2, ChevronRight
+  Coins, Zap, Shield, ArrowUpRight, Flame, CheckCircle2, ChevronRight, ArrowLeft
 } from 'lucide-react';
 
-export const AdminPanel: React.FC = () => {
+interface AdminPanelProps {
+  onNavigateTab?: (tab: any) => void;
+}
+
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onNavigateTab }) => {
   const { user, loginWithCredentials } = useAuth();
   const [activeTab, setActiveTab] = useState<'questions' | 'analytics' | 'reports' | 'users' | 'battles'>('questions');
   const [questions, setQuestions] = useState<any[]>([]);
@@ -342,17 +346,40 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={handleAdminDemoLogin}
-          className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 font-gaming font-black text-sm tracking-wide shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2"
+          className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-400 hover:to-indigo-500 text-slate-950 font-gaming font-black text-sm tracking-wide shadow-lg shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 mb-3"
         >
           <Zap className="w-4 h-4 fill-slate-950" />
           <span>Login as ArenaMaster (Admin)</span>
         </button>
+
+        {onNavigateTab && (
+          <button
+            onClick={() => onNavigateTab('home')}
+            className="text-xs text-slate-400 hover:text-white flex items-center gap-1 font-gaming"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Return to Home</span>
+          </button>
+        )}
       </div>
     );
   }
 
   return (
     <div className="w-full max-w-2xl mx-auto px-4 py-4 pb-24 flex flex-col gap-4">
+      {/* Back to Home Button */}
+      {onNavigateTab && (
+        <div>
+          <button
+            onClick={() => onNavigateTab('home')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-gaming font-bold transition-all active:scale-95 shadow-sm"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-amber-400" />
+            <span>← Return to Home</span>
+          </button>
+        </div>
+      )}
+
       {/* 1. Header Banner */}
       <div className="flex items-center justify-between">
         <div>

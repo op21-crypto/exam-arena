@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Shield, Flame, Medal, RefreshCw, Award } from 'lucide-react';
+import { Trophy, Shield, Flame, Medal, RefreshCw, Award, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { BUNDLED_LEADERBOARD } from '../data/bundledQuestions';
 
-export const LeaderboardView: React.FC = () => {
+interface LeaderboardViewProps {
+  onNavigateTab?: (tab: any) => void;
+}
+
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ onNavigateTab }) => {
   const { user, lang } = useAuth();
   const [leaderboard, setLeaderboard] = useState<any[]>(BUNDLED_LEADERBOARD);
   const [loading, setLoading] = useState<boolean>(false);
@@ -49,6 +53,19 @@ export const LeaderboardView: React.FC = () => {
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 py-4 pb-24 flex flex-col gap-4">
+      {/* Back to Home Button */}
+      {onNavigateTab && (
+        <div>
+          <button
+            onClick={() => onNavigateTab('home')}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-gaming font-bold transition-all active:scale-95 shadow-sm"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-amber-400" />
+            <span>{lang === 'hi' ? '← मुख्य पृष्ठ (Home)' : '← Back to Home'}</span>
+          </button>
+        </div>
+      )}
+
       {/* Title */}
       <div className="flex items-center justify-between">
         <div>
