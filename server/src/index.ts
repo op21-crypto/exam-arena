@@ -115,7 +115,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   // Friend Rooms
-  socket.on('create_friend_room', (data: { userId: string; examId?: string; subjectId?: string }) => {
+  socket.on('create_friend_room', (data: { userId: string; examId?: string; subjectId?: string; maxPlayers?: number; questionCount?: number; timeLimitSeconds?: number }) => {
     socket.data.userId = data.userId;
     createFriendRoom(socket, data);
   });

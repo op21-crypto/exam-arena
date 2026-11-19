@@ -10,6 +10,9 @@ export interface QueueEntry {
   examId?: string;
   subjectId?: string;
   joinedAt: number;
+  questionCount?: number;
+  timeLimitSeconds?: number;
+  playerCount?: number;
 }
 
 export interface FriendRoomMember {
@@ -28,6 +31,8 @@ export interface FriendRoom {
   roomCode: string;
   hostUserId: string;
   maxPlayers: number; // 2 to 6
+  questionCount?: number;
+  timeLimitSeconds?: number;
   members: FriendRoomMember[];
   examId?: string;
   subjectId?: string;
@@ -54,7 +59,7 @@ export function initMatchmaking(io: Server) {
   }, 800);
 }
 
-export function addToQueue(io: Server, socket: Socket, data: { userId: string; examId?: string; subjectId?: string; forceBot?: boolean }) {
+export function addToQueue(io: Server, socket: Socket, data: { userId: string; examId?: string; subjectId?: string; forceBot?: boolean; questionCount?: number; timeLimitSeconds?: number; playerCount?: number }) {
   removeFromQueue(socket.id);
 
   const profile = getUserFullProfile(data.userId);
@@ -67,7 +72,10 @@ export function addToQueue(io: Server, socket: Socket, data: { userId: string; e
     rating: profile.stats.rating,
     examId: data.examId,
     subjectId: data.subjectId,
-    joinedAt: Date.now()
+    joinedAt: Date.now(),
+    questionCount: data.questionCount,
+    timeLimitSeconds: data.timeLimitSeconds,
+    playerCount: data.playerCount
   };
 
   matchmakingQueue.push(entry);
@@ -149,7 +157,13 @@ function matchWithBot(io: Server, p1: QueueEntry) {
         }
       }
     ],
-    { mode: 'quick', examId: p1.examId, subjectId: p1.subjectId }
+    {
+      mode: 'quick',
+      examId: p1.examId,
+      subjectId: p1.subjectId,
+      questionCount: p1.questionCount,
+      timeLimitSeconds: p1.timeLimitSeconds
+    }
   );
 }
 
@@ -157,7 +171,7 @@ function matchWithBot(io: Server, p1: QueueEntry) {
 
 export function createFriendRoom(
   socket: Socket,
-  data: { userId: string; examId?: string; subjectId?: string; maxPlayers?: number }
+  data: { userId: string; examId?: string; subjectId?: string; maxPlayers?: number; questionCount?: number; timeLimitSeconds?: number }
 ): FriendRoom {
   const profile = getUserFullProfile(data.userId);
 
@@ -171,6 +185,8 @@ export function createFriendRoom(
     roomCode,
     hostUserId: data.userId,
     maxPlayers: Math.max(2, Math.min(6, data.maxPlayers || 4)),
+    questionCount: data.questionCount || 10,
+    timeLimitSeconds: data.timeLimitSeconds || 10,
     members: [
       {
         userId: data.userId,
@@ -321,7 +337,14 @@ export function toggleFriendReady(
     startBattleWithPlayers(
       io,
       playerConfigs,
-      { mode: 'friend', examId: room.examId, subjectId: room.subjectId, roomCode: room.roomCode }
+      {
+        mode: 'friend',
+        examId: room.examId,
+        subjectId: room.subjectId,
+        roomCode: room.roomCode,
+        questionCount: room.questionCount,
+        timeLimitSeconds: room.timeLimitSeconds
+      }
     );
   }
 }

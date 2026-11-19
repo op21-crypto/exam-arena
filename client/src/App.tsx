@@ -13,6 +13,7 @@ import { VSModal } from './components/VSModal';
 import { BattleScreen } from './components/BattleScreen';
 import { BattleResultModal } from './components/BattleResultModal';
 import { FriendRoomModal } from './components/FriendRoomModal';
+import { CustomBattleModal, CustomBattleConfig } from './components/CustomBattleModal';
 import { AuthModal } from './components/AuthModal';
 import { localGameEngine } from './services/localGameEngine';
 import { multiplayerRoomService, FirestoreRoomData } from './services/multiplayerRoomService';
@@ -24,6 +25,7 @@ export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [showFriendModal, setShowFriendModal] = useState<boolean>(false);
+  const [showCustomModal, setShowCustomModal] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const searchTimeoutRef = useRef<any>(null);
   const roomTimerRef = useRef<any>(null);
@@ -138,9 +140,10 @@ export const App: React.FC = () => {
           setQuestionIndex(qIndex);
           setTotalQuestions(room.questions.length);
           setQuestionResolution(null);
-          setRemainingSeconds(10);
+          const timeSec = room.timeLimitSeconds || 10;
+          setRemainingSeconds(timeSec);
 
-          // Reset local 10s timer
+          // Reset local timer matching room's custom time per question
           if (roomTimerRef.current) clearInterval(roomTimerRef.current);
           roomTimerRef.current = setInterval(() => {
             setRemainingSeconds(prev => {
@@ -337,18 +340,32 @@ export const App: React.FC = () => {
   }, [user?.id]);
 
   // Hybrid 1v1 Battle Launcher: Works 100% online or offline!
-  const handleStartQuickBattle = (examId?: string, subjectId?: string, isSpeed?: boolean) => {
+  const handleStartQuickBattle = (
+    examId?: string,
+    subjectId?: string,
+    isSpeed?: boolean,
+    customOptions?: { questionCount?: number; timeLimitSeconds?: number; playerCount?: number }
+  ) => {
     if (!user) return;
     setIsSearching(true);
 
     const launchLocal = () => {
       setIsSearching(false);
       localGameEngine.startBattle(
-        { examId, subjectId, user, isSpeed },
+        {
+          examId,
+          subjectId,
+          user,
+          isSpeed,
+          questionCount: customOptions?.questionCount,
+          timeLimitSeconds: customOptions?.timeLimitSeconds,
+          playerCount: customOptions?.playerCount
+        },
         {
           onMatched: (data) => {
             setIsSearching(false);
             setShowFriendModal(false);
+            setShowCustomModal(false);
             setActiveBattleId(data.battleId);
             setBattlePlayers({ player1: data.player1, player2: data.player2 });
             setAllBattlePlayers(data.players || [data.player1, data.player2]);
@@ -414,7 +431,10 @@ export const App: React.FC = () => {
       socket.emit('join_queue', {
         userId: user.id,
         examId,
-        subjectId
+        subjectId,
+        questionCount: customOptions?.questionCount,
+        timeLimitSeconds: customOptions?.timeLimitSeconds,
+        playerCount: customOptions?.playerCount
       });
 
       // Resilient 1.8s timeout: if server queue doesn't pair immediately, launch local bot
@@ -569,11 +589,24 @@ export const App: React.FC = () => {
   };
 
   // Friend Room: Create
-  const handleCreateFriendRoom = async (examId?: string, subjectId?: string, maxPlayers?: number) => {
+  const handleCreateFriendRoom = async (
+    examId?: string,
+    subjectId?: string,
+    maxPlayers?: number,
+    questionCount?: number,
+    timeLimitSeconds?: number
+  ) => {
     if (!user) return;
     try {
       // Create real-time room in Firestore
-      const room = await multiplayerRoomService.createRoom(user, examId, subjectId, maxPlayers);
+      const room = await multiplayerRoomService.createRoom(
+        user,
+        examId,
+        subjectId,
+        maxPlayers,
+        questionCount || 10,
+        timeLimitSeconds || 10
+      );
       setFriendRoomData(room);
       setShowFriendModal(true);
 
@@ -587,7 +620,9 @@ export const App: React.FC = () => {
           roomCode: room.roomCode,
           examId,
           subjectId,
-          maxPlayers: maxPlayers || 4
+          maxPlayers: maxPlayers || 4,
+          questionCount: questionCount || 10,
+          timeLimitSeconds: timeLimitSeconds || 10
         });
       }
     } catch (err) {
@@ -686,6 +721,7 @@ export const App: React.FC = () => {
                     setShowFriendModal(true);
                   }
                 }}
+                onOpenCustomBattle={() => setShowCustomModal(true)}
                 onOpenPractice={() => setActiveTab('practice')}
                 onNavigateTab={handleNavTabChange}
                 isSearching={isSearching}
@@ -695,7 +731,7 @@ export const App: React.FC = () => {
 
             {activeTab === 'battle' && (
               <BattleHubView
-                onStartBattle={(exId, subId) => handleStartQuickBattle(exId, subId)}
+                onStartBattle={(exId, subId, customOptions) => handleStartQuickBattle(exId, subId, false, customOptions)}
                 isSearching={isSearching}
                 onCancelSearch={handleCancelSearch}
                 onNavigateTab={handleNavTabChange}
@@ -752,6 +788,29 @@ export const App: React.FC = () => {
           onAddBot={handleAddBotToFriendRoom}
           onToggleReady={handleToggleReadyInFriendRoom}
           onStartRoomBattle={handleStartFriendBattle}
+        />
+      )}
+
+      {showCustomModal && (
+        <CustomBattleModal
+          onClose={() => setShowCustomModal(false)}
+          onStartBattle={(config: CustomBattleConfig) => {
+            handleStartQuickBattle(
+              config.examId,
+              config.subjectId === 'all' ? undefined : config.subjectId,
+              false,
+              config
+            );
+          }}
+          onCreateFriendRoom={(config: CustomBattleConfig) => {
+            handleCreateFriendRoom(
+              config.examId,
+              config.subjectId === 'all' ? 'sub-math' : config.subjectId,
+              config.playerCount,
+              config.questionCount,
+              config.timeLimitSeconds
+            );
+          }}
         />
       )}
 

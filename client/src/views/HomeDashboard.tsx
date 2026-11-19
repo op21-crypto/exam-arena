@@ -5,12 +5,13 @@ import { BUNDLED_MISSIONS, BUNDLED_LEADERBOARD } from '../data/bundledQuestions'
 import { TournamentModal } from '../components/TournamentModal';
 import {
   Swords, Users, Zap, Target, BookOpen, Trophy, Flame,
-  CheckCircle2, ChevronRight, Award, Shield, Sparkles, Medal
+  CheckCircle2, ChevronRight, Award, Shield, Sparkles, Medal, Sliders, Settings2
 } from 'lucide-react';
 
 interface HomeDashboardProps {
-  onStartQuickBattle: (examId?: string, subjectId?: string, isSpeed?: boolean) => void;
+  onStartQuickBattle: (examId?: string, subjectId?: string, isSpeed?: boolean, customOptions?: any) => void;
   onOpenFriendRoom: () => void;
+  onOpenCustomBattle?: () => void;
   onOpenPractice: () => void;
   onNavigateTab: (tab: any) => void;
   isSearching: boolean;
@@ -20,6 +21,7 @@ interface HomeDashboardProps {
 export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   onStartQuickBattle,
   onOpenFriendRoom,
+  onOpenCustomBattle,
   onOpenPractice,
   onNavigateTab,
   isSearching,
@@ -132,7 +134,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
               : 'Real-time 1v1 battle against live aspirants. 10 questions, 10s timer, authentic Gov Exam PYQs.'}
           </p>
 
-          <div className="mt-5 flex items-center gap-3">
+          <div className="mt-5 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
             {isSearching ? (
               <button
                 onClick={onCancelSearch}
@@ -142,13 +144,23 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
                 <span>{lang === 'hi' ? 'मैचमेकिंग जारी है... (रद्द करें)' : 'Matchmaking in progress... (Cancel)'}</span>
               </button>
             ) : (
-              <button
-                onClick={() => onStartQuickBattle()}
-                className="flex-1 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:via-indigo-500 hover:to-purple-500 text-white font-gaming font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/50 hover:shadow-cyan-500/30 active:scale-95 transition-all"
-              >
-                <Swords className="w-5 h-5" />
-                <span>⚔️ {lang === 'hi' ? 'प्रतिद्वंद्वी खोजें (QUICK 1V1)' : 'FIND RANDOM OPPONENT'}</span>
-              </button>
+              <>
+                <button
+                  onClick={() => onStartQuickBattle()}
+                  className="flex-1 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:via-indigo-500 hover:to-purple-500 text-white font-gaming font-black text-sm sm:text-base flex items-center justify-center gap-2 shadow-xl shadow-indigo-900/50 hover:shadow-cyan-500/30 active:scale-95 transition-all"
+                >
+                  <Swords className="w-4 h-4" />
+                  <span>⚔️ {lang === 'hi' ? 'रैंडम मुकाबला (1V1)' : 'QUICK 1V1'}</span>
+                </button>
+
+                <button
+                  onClick={onOpenCustomBattle}
+                  className="py-3.5 px-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-indigo-500/40 hover:border-indigo-400 text-cyan-300 hover:text-white font-gaming font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all"
+                >
+                  <Sliders className="w-4 h-4 text-cyan-400" />
+                  <span>⚙️ {lang === 'hi' ? 'कस्टम बैटल' : 'CUSTOM BATTLE'}</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -183,6 +195,27 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             </span>
           </div>
 
+          {/* Custom Battle Rulemaker */}
+          <div
+            onClick={onOpenCustomBattle}
+            className="group cursor-pointer bg-arena-card hover:bg-slate-800/90 border border-arena-border hover:border-amber-500/50 rounded-2xl p-4 transition-all duration-200 active:scale-98 shadow-md flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
+                <Sliders className="w-5 h-5" />
+              </div>
+              <h3 className="font-gaming font-bold text-base text-white">
+                {lang === 'hi' ? 'कस्टम मुकाबला' : 'Custom Battle'}
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                {lang === 'hi' ? 'प्रश्न, समय व खिलाड़ी संख्या स्वयं चुनें।' : 'Customize question count, timer & contestants.'}
+              </p>
+            </div>
+            <span className="text-[10px] font-bold text-amber-400 flex items-center gap-1 mt-3">
+              {lang === 'hi' ? 'नियम बनाएं →' : 'Custom Setup'} <ChevronRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+            </span>
+          </div>
+
           {/* Subject Battle */}
           <div
             onClick={() => onNavigateTab('battle')}
@@ -207,7 +240,7 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           {/* Speed Challenge */}
           <div
             onClick={() => onStartQuickBattle(undefined, undefined, true)}
-            className="group cursor-pointer bg-arena-card hover:bg-slate-800/90 border border-arena-border hover:border-amber-500/50 rounded-2xl p-4 transition-all duration-200 active:scale-98 shadow-md flex flex-col justify-between"
+            className="group cursor-pointer bg-arena-card hover:bg-slate-800/90 border border-arena-border hover:border-rose-500/50 rounded-2xl p-4 transition-all duration-200 active:scale-98 shadow-md flex flex-col justify-between"
           >
             <div>
               <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mb-2.5 group-hover:scale-110 transition-transform">
