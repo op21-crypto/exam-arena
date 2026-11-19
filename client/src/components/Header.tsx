@@ -144,57 +144,76 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAuth, onNavigateTab }) => 
 
       {/* Profile / Account Dropdown Menu */}
       {showProfileMenu && (
-        <div
-          className="absolute left-4 top-14 w-56 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95"
-          onClick={() => setShowProfileMenu(false)}
-        >
-          <div className="px-3 py-2 border-b border-slate-800">
-            <p className="text-xs text-slate-400">Signed in as</p>
-            <p className="font-bold text-sm text-white truncate">{user?.username}</p>
-            {user?.is_guest ? (
-              <span className="inline-block mt-1 text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
-                Guest Mode
-              </span>
-            ) : null}
-          </div>
+        <>
+          {/* Backdrop for outside click dismiss */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowProfileMenu(false)}
+          />
 
-          <button
-            onClick={() => {
-              setShowProfileMenu(false);
-              if (onNavigateTab) onNavigateTab('profile');
-            }}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-cyan-300 hover:bg-slate-800 font-bold transition-colors"
+          <div
+            className="absolute left-4 top-14 w-60 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95"
+            onClick={() => setShowProfileMenu(false)}
           >
-            <User className="w-4 h-4 text-cyan-400" />
-            <span>{lang === 'hi' ? 'मेरी प्रोफ़ाइल (View Profile)' : 'View My Profile'}</span>
-          </button>
+            <div className="px-3 py-2 border-b border-slate-800">
+              <p className="text-xs text-slate-400">Signed in as</p>
+              <p className="font-bold text-sm text-white truncate">{user?.username}</p>
+              {user?.is_guest ? (
+                <span className="inline-block mt-1 text-[10px] text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded">
+                  Guest Mode
+                </span>
+              ) : null}
+            </div>
 
-          <button
-            onClick={onOpenAuth}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-slate-800 transition-colors"
-          >
-            <User className="w-4 h-4 text-indigo-400" />
-            <span>Switch / Login Account</span>
-          </button>
-
-          {user?.is_admin === 1 && onNavigateTab && (
             <button
-              onClick={() => onNavigateTab('admin')}
-              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 font-gaming font-bold my-1 transition-colors"
+              onClick={() => {
+                setShowProfileMenu(false);
+                if (onNavigateTab) onNavigateTab('profile');
+              }}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-cyan-300 hover:bg-slate-800 font-bold transition-colors"
             >
-              <ShieldCheck className="w-4 h-4 text-amber-400" />
-              <span>Admin Control Panel</span>
+              <User className="w-4 h-4 text-cyan-400" />
+              <span>{lang === 'hi' ? 'मेरी प्रोफ़ाइल (View Profile)' : 'View My Profile'}</span>
             </button>
-          )}
 
-          <button
-            onClick={logout}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Sign Out</span>
-          </button>
-        </div>
+            <button
+              onClick={() => {
+                setShowProfileMenu(false);
+                if (onNavigateTab) onNavigateTab('profile');
+              }}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-indigo-300 hover:bg-slate-800 font-semibold transition-colors"
+            >
+              <span className="text-sm">🎭</span>
+              <span>{lang === 'hi' ? 'अवतार बदलें (Change Avatar)' : 'Change Avatar'}</span>
+            </button>
+
+            <button
+              onClick={onOpenAuth}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-slate-200 hover:bg-slate-800 transition-colors"
+            >
+              <User className="w-4 h-4 text-indigo-400" />
+              <span>Switch / Login Account</span>
+            </button>
+
+            {user?.is_admin === 1 && onNavigateTab && (
+              <button
+                onClick={() => onNavigateTab('admin')}
+                className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 font-gaming font-bold my-1 transition-colors"
+              >
+                <ShieldCheck className="w-4 h-4 text-amber-400" />
+                <span>Admin Control Panel</span>
+              </button>
+            )}
+
+            <button
+              onClick={logout}
+              className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </>
       )}
     </header>
   );

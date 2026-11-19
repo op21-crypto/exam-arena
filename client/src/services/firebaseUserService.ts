@@ -187,6 +187,15 @@ export async function fetchUserFirestoreProfile(userId: string): Promise<UserPro
   };
 }
 
+export async function updateUserFirestoreAvatar(userId: string, avatarUrl: string): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, { avatar: avatarUrl, updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.warn('Failed to update avatar in Firestore:', err);
+  }
+}
+
 export async function updateUserStatsInFirestore(
   userId: string, 
   updates: {

@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Shield, Trophy, Flame, Coins, Zap, Target, Award, Clock, ArrowUpRight, ArrowDownRight, RefreshCw, ArrowLeft } from 'lucide-react';
+import { AvatarPickerModal } from '../components/AvatarPickerModal';
+import { Shield, Trophy, Flame, Coins, Zap, Target, Award, Clock, ArrowUpRight, ArrowDownRight, RefreshCw, ArrowLeft, Sparkles, Edit3 } from 'lucide-react';
 
 interface ProfileViewProps {
   onNavigateTab?: (tab: any) => void;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onNavigateTab }) => {
-  const { user, lang, refreshUser } = useAuth();
+  const { user, lang, refreshUser, updateAvatar } = useAuth();
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState<boolean>(true);
+  const [showAvatarModal, setShowAvatarModal] = useState<boolean>(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -95,15 +97,25 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onNavigateTab }) => {
       {/* 1. Aspirant Dossier Card */}
       <div className="bg-arena-card border border-arena-border rounded-3xl p-5 shadow-xl relative overflow-hidden">
         <div className="flex items-center gap-4">
-          <div className="relative">
-            <div className="w-20 h-20 rounded-full border-3 border-indigo-500 overflow-hidden bg-slate-800 p-0.5 shadow-xl">
+          <div className="relative group cursor-pointer" onClick={() => setShowAvatarModal(true)}>
+            <div className="w-20 h-20 rounded-full border-3 border-indigo-500 overflow-hidden bg-slate-800 p-0.5 shadow-xl transition-transform group-hover:scale-105">
               <img
                 src={user?.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=Aspirant'}
                 alt={user?.username}
                 className="w-full h-full object-cover rounded-full"
               />
             </div>
-            <span className="absolute bottom-0 right-0 bg-indigo-600 text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full border border-slate-900 font-gaming">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAvatarModal(true);
+              }}
+              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-indigo-600 hover:bg-indigo-500 border-2 border-slate-900 text-white flex items-center justify-center shadow-lg transition-transform active:scale-90"
+              title={lang === 'hi' ? 'अवतार बदलें' : 'Change Avatar'}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            </button>
+            <span className="absolute top-0 -left-1 bg-indigo-600 text-[10px] font-bold text-white px-1.5 py-0.5 rounded-full border border-slate-900 font-gaming">
               LVL {user?.stats.level || 1}
             </span>
           </div>
@@ -114,7 +126,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onNavigateTab }) => {
             </h1>
             <p className="text-[11px] text-slate-400 font-mono">ID: {user?.id}</p>
 
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
               <span className="text-xs font-bold font-gaming px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40">
                 ⭐ {user?.stats.rank_tier || 'Silver'} ({user?.stats.rating || 1200} Elo)
               </span>
@@ -123,6 +135,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onNavigateTab }) => {
                 {user?.stats.coins || 100}
               </span>
             </div>
+
+            <button
+              onClick={() => setShowAvatarModal(true)}
+              className="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 text-xs font-gaming font-bold transition-all active:scale-95"
+            >
+              <Sparkles className="w-3 h-3 text-amber-400" />
+              <span>{lang === 'hi' ? 'गेमिंग अवतार बदलें' : 'Change Gaming Avatar'}</span>
+            </button>
           </div>
         </div>
 
@@ -280,6 +300,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ onNavigateTab }) => {
           </div>
         )}
       </div>
+
+      {showAvatarModal && (
+        <AvatarPickerModal
+          onClose={() => setShowAvatarModal(false)}
+          onSelectAvatar={(url) => updateAvatar(url)}
+        />
+      )}
     </div>
   );
 };

@@ -3,9 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import { DailyMission } from '../types';
 import { BUNDLED_MISSIONS, BUNDLED_LEADERBOARD } from '../data/bundledQuestions';
 import { TournamentModal } from '../components/TournamentModal';
+import { sound } from '../sound/soundEngine';
 import {
   Swords, Users, Zap, Target, BookOpen, Trophy, Flame,
-  CheckCircle2, ChevronRight, Award, Shield, Sparkles, Medal, Sliders, Settings2
+  CheckCircle2, ChevronRight, Award, Shield, Sparkles, Medal, Sliders, Settings2,
+  Gift, Coins, X
 } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -31,6 +33,43 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
   const [missions, setMissions] = useState<DailyMission[]>(BUNDLED_MISSIONS);
   const [claiming, setClaiming] = useState<string | null>(null);
   const [showTournament, setShowTournament] = useState<boolean>(false);
+  const [chestRewardModal, setChestRewardModal] = useState<{ coins: number; xp: number } | null>(null);
+  const [lastChestClaim, setLastChestClaim] = useState<number>(() => {
+    const saved = localStorage.getItem('exam_arena_last_chest_claim');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  const COOLDOWN_MS = 24 * 60 * 60 * 1000;
+  const timeSinceClaim = Date.now() - lastChestClaim;
+  const canClaimChest = timeSinceClaim >= COOLDOWN_MS;
+  const remainingHours = Math.max(0, Math.ceil((COOLDOWN_MS - timeSinceClaim) / (60 * 60 * 1000)));
+
+  const handleClaimChest = () => {
+    if (!canClaimChest) return;
+    const coinsAwarded = Math.floor(100 + Math.random() * 150);
+    const xpAwarded = Math.floor(150 + Math.random() * 150);
+
+    const now = Date.now();
+    setLastChestClaim(now);
+    localStorage.setItem('exam_arena_last_chest_claim', now.toString());
+
+    // Update local user stats
+    const localStr = localStorage.getItem('exam_arena_local_user');
+    if (localStr) {
+      try {
+        const u = JSON.parse(localStr);
+        u.stats.coins = (u.stats.coins || 100) + coinsAwarded;
+        u.stats.xp = (u.stats.xp || 0) + xpAwarded;
+        localStorage.setItem('exam_arena_local_user', JSON.stringify(u));
+      } catch {
+        // ignore
+      }
+    }
+
+    sound.playVictory();
+    refreshUser();
+    setChestRewardModal({ coins: coinsAwarded, xp: xpAwarded });
+  };
 
   const fetchMissions = async () => {
     if (!user) return;
@@ -308,6 +347,60 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
             {lang === 'hi' ? 'विवरण' : 'Enter'}
           </button>
         </div>
+
+        {/* Daily Mystery Rewards Chest */}
+        <div
+          onClick={canClaimChest ? handleClaimChest : undefined}
+          className={`mt-3 rounded-2xl border p-4 shadow-xl transition-all flex items-center justify-between ${
+            canClaimChest
+              ? 'cursor-pointer bg-gradient-to-r from-purple-950/80 via-indigo-950/90 to-slate-900 border-indigo-500/50 hover:border-indigo-400 hover:shadow-indigo-500/20 active:scale-98'
+              : 'bg-slate-900/80 border-slate-800 opacity-80'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border ${
+              canClaimChest
+                ? 'bg-indigo-500/20 border-indigo-400/50 text-indigo-300 animate-bounce'
+                : 'bg-slate-800 border-slate-700 text-slate-500'
+            }`}>
+              <Gift className="w-6 h-6 text-indigo-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] font-gaming font-extrabold px-2 py-0.5 rounded-full border ${
+                  canClaimChest
+                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                    : 'bg-slate-800 text-slate-400 border-slate-700'
+                }`}>
+                  {lang === 'hi' ? 'दैनिक खजाना' : 'DAILY CHEST'}
+                </span>
+                <span className="text-xs font-gaming text-amber-400 font-bold">Free Coins & XP</span>
+              </div>
+              <h4 className="font-gaming font-bold text-sm text-white mt-0.5">
+                {lang === 'hi' ? 'दैनिक मिस्ट्री रिवॉर्ड चेस्ट' : 'Daily Mystery Lucky Chest'}
+              </h4>
+              <p className="text-[11px] text-slate-300">
+                {canClaimChest
+                  ? (lang === 'hi' ? '✨ आज का इनाम तैयार है! टैप करके खोलें।' : '✨ Today’s chest is ready! Tap to unlock.')
+                  : (lang === 'hi' ? `अगला खजाना: ~${remainingHours} घंटे में` : `Next chest unlocks in ~${remainingHours} hours`)}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (canClaimChest) handleClaimChest();
+            }}
+            disabled={!canClaimChest}
+            className={`px-3.5 py-1.5 rounded-xl font-gaming font-bold text-xs shrink-0 shadow-md transition-all active:scale-95 ${
+              canClaimChest
+                ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white shadow-indigo-500/30 ring-1 ring-cyan-400/50'
+                : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+            }`}
+          >
+            {canClaimChest ? (lang === 'hi' ? 'खोलें 🎁' : 'Open 🎁') : (lang === 'hi' ? 'प्राप्त ✓' : 'Claimed ✓')}
+          </button>
+        </div>
       </div>
 
       {/* 3. Global Leaderboard Preview */}
@@ -426,6 +519,52 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
       {showTournament && (
         <TournamentModal onClose={() => setShowTournament(false)} lang={lang} />
+      )}
+
+      {/* Daily Mystery Chest Unlocked Celebration Modal */}
+      {chestRewardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-arena-surface border border-indigo-500/50 rounded-3xl p-6 shadow-2xl relative flex flex-col items-center text-center">
+            <button
+              onClick={() => setChestRewardModal(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-800 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="w-16 h-16 rounded-2xl bg-indigo-500/20 border-2 border-indigo-400/60 flex items-center justify-center text-indigo-300 shadow-xl mb-3 animate-bounce">
+              <Gift className="w-8 h-8 text-indigo-400" />
+            </div>
+
+            <h3 className="font-gaming font-black text-2xl text-white">
+              {lang === 'hi' ? 'दैनिक खजाना खुला!' : 'Daily Chest Unlocked!'}
+            </h3>
+            <p className="text-xs text-slate-300 mt-1 mb-4 leading-relaxed">
+              {lang === 'hi' ? 'बधाई! आपने आज का दैनिक मिस्ट्री खजाना प्राप्त कर लिया है।' : 'Congratulations! You unlocked today’s mystery lucky rewards.'}
+            </p>
+
+            <div className="grid grid-cols-2 gap-3 w-full mb-5">
+              <div className="bg-slate-900 border border-amber-500/40 rounded-2xl p-3 flex flex-col items-center">
+                <span className="text-2xl mb-1">🪙</span>
+                <span className="font-gaming font-black text-lg text-amber-300">+{chestRewardModal.coins}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Coins</span>
+              </div>
+
+              <div className="bg-slate-900 border border-indigo-500/40 rounded-2xl p-3 flex flex-col items-center">
+                <span className="text-2xl mb-1">⚡</span>
+                <span className="font-gaming font-black text-lg text-indigo-300">+{chestRewardModal.xp}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase">XP</span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setChestRewardModal(null)}
+              className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-indigo-600 text-white font-gaming font-black text-sm shadow-lg shadow-indigo-900/50 hover:from-cyan-400 hover:to-indigo-500 active:scale-95 transition-all"
+            >
+              {lang === 'hi' ? 'शानदार! प्राप्त करें (Collect)' : 'Awesome! Collect'}
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

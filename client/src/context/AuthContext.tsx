@@ -9,7 +9,7 @@ import {
   User as FirebaseUser
 } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase/config';
-import { syncUserProfileOnLogin, fetchUserFirestoreProfile } from '../services/firebaseUserService';
+import { syncUserProfileOnLogin, fetchUserFirestoreProfile, updateUserFirestoreAvatar } from '../services/firebaseUserService';
 import { UserProfile } from '../types';
 import { socket } from '../socket/socket';
 
@@ -27,6 +27,7 @@ interface AuthContextType {
   registerWithCredentials: (username: string, email: string, pass: string, avatar?: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  updateAvatar: (avatarUrl: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -321,6 +322,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateAvatar = async (avatarUrl: string) => {
+    // 1. Optimistic state update
+    setUser(prev => prev ? { ...prev, avatar: avatarUrl } : null);
+
+    // 2. Persist locally
+    const localStr = localStorage.getItem('exam_arena_local_user');
+    if (localStr) {
+      try {
+        const parsed = JSON.parse(localStr);
+        parsed.avatar = avatarUrl;
+        localStorage.setItem('exam_arena_local_user', JSON.stringify(parsed));
+      } catch {
+        // ignore
+      }
+    }
+
+    // 3. Persist to Firestore if logged in
+    if (auth.currentUser) {
+      try {
+        await updateUserFirestoreAvatar(auth.currentUser.uid, avatarUrl);
+      } catch (err) {
+        console.warn('Could not sync avatar to Firestore:', err);
+      }
+    }
+
+    // 4. Update backend if available
+    if (user?.id) {
+      try {
+        await fetch('/api/auth/profile', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, avatar: avatarUrl })
+        });
+      } catch {
+        // backend offline
+      }
+    }
+  };
+
   const logout = async () => {
     try {
       if (auth.currentUser) {
@@ -365,7 +405,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithCredentials,
         registerWithCredentials,
         logout,
-        refreshUser
+        refreshUser,
+        updateAvatar
       }}
     >
       {children}

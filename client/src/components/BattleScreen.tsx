@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SanitizedQuestion, BattlePlayerInfo } from '../types';
 import { sound } from '../sound/soundEngine';
-import { CheckCircle2, XCircle, Globe, Zap, Users, ArrowLeft, LogOut } from 'lucide-react';
+import { CheckCircle2, XCircle, Globe, Zap, Users, ArrowLeft, LogOut, Flame } from 'lucide-react';
 
 interface BattleScreenProps {
   battleId: string;
@@ -54,6 +54,7 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
   const [showQuitConfirm, setShowQuitConfirm] = useState<boolean>(false);
+  const [comboCount, setComboCount] = useState<number>(0);
 
   const isPlayer1 = myUserId === player1.userId;
   const me = isPlayer1 ? player1 : player2;
@@ -74,8 +75,10 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
     if (resolution) {
       if (resolution.isCorrect) {
         sound.playCorrect();
+        setComboCount(c => c + 1);
       } else {
         sound.playIncorrect();
+        setComboCount(0);
       }
     }
   }, [resolution]);
@@ -357,12 +360,29 @@ export const BattleScreen: React.FC<BattleScreenProps> = ({
       {/* 4. Instant Explanation Drawer after Resolution */}
       {resolution && (
         <div className="mt-1 bg-slate-900/90 border border-slate-700/80 rounded-2xl p-4 shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
-          <div className="flex items-center justify-between mb-2">
-            <span className={`font-gaming font-black text-sm uppercase ${
-              resolution.isCorrect ? 'text-emerald-400' : 'text-rose-400'
-            }`}>
-              {resolution.isCorrect ? `✓ Correct! (+${resolution.pointsAwarded} pts)` : '✗ Incorrect (0 pts)'}
-            </span>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`font-gaming font-black text-sm uppercase ${
+                resolution.isCorrect ? 'text-emerald-400' : 'text-rose-400'
+              }`}>
+                {resolution.isCorrect ? `✓ Correct! (+${resolution.pointsAwarded} pts)` : '✗ Incorrect (0 pts)'}
+              </span>
+
+              {resolution.isCorrect && resolution.pointsAwarded > 100 && (
+                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-gaming font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                  <Zap className="w-3 h-3 fill-amber-400 text-amber-400" />
+                  +{resolution.pointsAwarded - 100} Speed Bonus!
+                </span>
+              )}
+
+              {comboCount >= 2 && resolution.isCorrect && (
+                <span className="bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-gaming font-extrabold px-1.5 py-0.5 rounded flex items-center gap-0.5 animate-pulse">
+                  <Flame className="w-3 h-3 fill-rose-400 text-rose-400" />
+                  {comboCount}X Combo!
+                </span>
+              )}
+            </div>
+
             <span className="text-[11px] text-slate-400 font-gaming">Next question starting soon...</span>
           </div>
 

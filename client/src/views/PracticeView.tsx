@@ -5,7 +5,8 @@ import { BUNDLED_QUESTIONS } from '../data/bundledQuestions';
 import { sound } from '../sound/soundEngine';
 import {
   BookOpen, CheckCircle2, XCircle, ArrowRight, ArrowLeft,
-  RefreshCw, Globe, Sparkles, Award, Shuffle, ChevronLeft, ChevronRight, Target
+  RefreshCw, Globe, Sparkles, Award, Shuffle, ChevronLeft, ChevronRight, Target,
+  Bookmark, Search, X
 } from 'lucide-react';
 
 interface PracticeViewProps {
@@ -20,7 +21,33 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
   const [loading, setLoading] = useState<boolean>(true);
   const [filterExam, setFilterExam] = useState<string>('all');
   const [filterSubject, setFilterSubject] = useState<string>('all');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [showBookmarksOnly, setShowBookmarksOnly] = useState<boolean>(false);
+  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('exam_arena_bookmarks');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [stats, setStats] = useState({ correct: 0, total: 0 });
+
+  const toggleBookmark = (id: string) => {
+    setBookmarkedIds(prev => {
+      let next: string[];
+      if (prev.includes(id)) {
+        next = prev.filter(bId => bId !== id);
+      } else {
+        next = [...prev, id];
+        sound.playMatchFound();
+      }
+      localStorage.setItem('exam_arena_bookmarks', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const isBookmarked = (id: string) => bookmarkedIds.includes(id);
 
   const examFilters = [
     { id: 'all', label: lang === 'hi' ? 'सभी 2025 परीक्षाएं' : 'All 2025 Exams', icon: '⚡' },
@@ -76,7 +103,27 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
     fetchPracticeQuestions();
   }, [filterExam, filterSubject]);
 
-  const currentQ = questions[currentIndex];
+  useEffect(() => {
+    setCurrentIndex(0);
+    setSelectedOption(null);
+  }, [searchTerm, showBookmarksOnly]);
+
+  const displayedQuestions = questions.filter(q => {
+    if (showBookmarksOnly && !bookmarkedIds.includes(q.id)) {
+      return false;
+    }
+    if (searchTerm.trim()) {
+      const s = searchTerm.toLowerCase();
+      const matchEn = q.question_en?.toLowerCase().includes(s);
+      const matchHi = q.question_hi?.toLowerCase().includes(s);
+      const matchTopic = q.topic_id?.toLowerCase().includes(s);
+      const matchPyq = q.pyq_source?.toLowerCase().includes(s);
+      return Boolean(matchEn || matchHi || matchTopic || matchPyq);
+    }
+    return true;
+  });
+
+  const currentQ = displayedQuestions[currentIndex] || null;
 
   const handleSelect = async (optIdx: number) => {
     if (selectedOption !== null || !currentQ) return;
@@ -104,7 +151,7 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
   };
 
   const handleNext = () => {
-    if (currentIndex < questions.length - 1) {
+    if (currentIndex < displayedQuestions.length - 1) {
       setCurrentIndex(currentIndex + 1);
       setSelectedOption(null);
     } else {
@@ -121,7 +168,7 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
   };
 
   const handleShuffle = () => {
-    if (questions.length === 0) return;
+    if (displayedQuestions.length === 0) return;
     const shuffled = [...questions].sort(() => Math.random() - 0.5);
     setQuestions(shuffled);
     setCurrentIndex(0);
@@ -227,11 +274,27 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
         </div>
       </div>
 
-      {/* 3. Subject-Wise Filter Pills */}
-      <div>
-        <label className="text-[11px] font-gaming font-bold text-slate-400 uppercase tracking-wider block mb-1.5 px-1">
-          {lang === 'hi' ? 'विषय चुनें (Subject-wise Filter)' : 'Filter by Subject'}
-        </label>
+      {/* 3. Subject-Wise Filter Pills & Revision Deck */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between px-1">
+          <label className="text-[11px] font-gaming font-bold text-slate-400 uppercase tracking-wider block">
+            {lang === 'hi' ? 'विषय चुनें (Subject-wise Filter)' : 'Filter by Subject'}
+          </label>
+
+          {/* Revision Deck Toggle Pill */}
+          <button
+            onClick={() => setShowBookmarksOnly(!showBookmarksOnly)}
+            className={`px-2.5 py-1 rounded-xl border text-[11px] font-gaming font-bold flex items-center gap-1.5 transition-all shadow-sm active:scale-95 ${
+              showBookmarksOnly
+                ? 'bg-amber-500 border-amber-400 text-slate-950 ring-2 ring-amber-500/30 font-black'
+                : 'bg-slate-900 hover:bg-slate-800 border-slate-800 hover:border-amber-500/40 text-amber-300'
+            }`}
+          >
+            <Bookmark className={`w-3 h-3 ${showBookmarksOnly ? 'fill-slate-950 text-slate-950' : 'fill-amber-400/40 text-amber-400'}`} />
+            <span>{lang === 'hi' ? `रिवीजन डेक (${bookmarkedIds.length})` : `Revision Deck (${bookmarkedIds.length})`}</span>
+          </button>
+        </div>
+
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs font-medium no-scrollbar">
           {subjectFilters.map((sub) => {
             const isSelected = filterSubject === sub.id;
@@ -253,7 +316,28 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
         </div>
       </div>
 
-      {/* 4. Question Drill View */}
+      {/* 4. Instant Search Keyword Filter */}
+      <div className="relative">
+        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder={lang === 'hi' ? 'प्रश्न या टॉपिक खोजें (उदा: Percentage, Syllogism, Blood Relation)...' : 'Search topic, question, or PYQ keywords...'}
+          className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-xl pl-8 pr-7 py-2 text-xs text-white placeholder-slate-500 focus:outline-none transition-all shadow-inner"
+        />
+        {searchTerm && (
+          <button
+            onClick={() => setSearchTerm('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+            title="Clear Search"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* 5. Question Drill View */}
       {loading ? (
         <div className="bg-arena-card border border-arena-border rounded-2xl p-8 flex flex-col items-center justify-center text-center">
           <RefreshCw className="w-8 h-8 text-emerald-400 animate-spin mb-3" />
@@ -261,15 +345,26 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
         </div>
       ) : !currentQ ? (
         <div className="bg-arena-card border border-arena-border rounded-2xl p-8 text-center flex flex-col items-center">
-          <p className="text-sm text-slate-400 mb-3">No questions found matching this filter combination.</p>
+          <p className="text-sm text-slate-300 font-medium mb-1">
+            {showBookmarksOnly
+              ? (lang === 'hi' ? 'रिवीजन डेक में कोई प्रश्न सहेजा नहीं गया है।' : 'No questions in your Revision Deck yet.')
+              : (lang === 'hi' ? 'इस फिल्टर से मेल खाता कोई प्रश्न नहीं मिला।' : 'No questions found matching this filter.')}
+          </p>
+          <p className="text-xs text-slate-500 mb-4 max-w-xs">
+            {showBookmarksOnly
+              ? (lang === 'hi' ? 'किसी भी प्रश्न पर बुकमार्क आइकन दबाकर उसे रिवीजन डेक में जोड़ें।' : 'Tap the bookmark icon on any tricky question to save it for quick revision before exams!')
+              : (lang === 'hi' ? 'कृपया खोज शब्द हटाएं या फिल्टर रीसेट करें।' : 'Try clearing your search term or resetting the exam/subject filters.')}
+          </p>
           <button
             onClick={() => {
               setFilterExam('all');
               setFilterSubject('all');
+              setSearchTerm('');
+              setShowBookmarksOnly(false);
             }}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-gaming font-bold shadow-md"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-gaming font-bold shadow-md transition-colors"
           >
-            {lang === 'hi' ? 'सभी प्रश्न रीसेट करें' : 'Reset All Filters'}
+            {lang === 'hi' ? 'सभी प्रश्न व फिल्टर रीसेट करें' : 'Reset All Filters'}
           </button>
         </div>
       ) : (
@@ -278,7 +373,7 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
           <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 px-3 py-2 rounded-xl text-xs">
             <div className="flex items-center gap-2">
               <span className="font-gaming font-bold text-white text-xs">
-                {lang === 'hi' ? 'प्रश्न' : 'Q'} {currentIndex + 1} / {questions.length}
+                {lang === 'hi' ? 'प्रश्न' : 'Q'} {currentIndex + 1} / {displayedQuestions.length}
               </span>
               <span className="text-[11px] text-slate-500">•</span>
               <span className="text-[11px] text-cyan-400 font-semibold truncate max-w-[140px] sm:max-w-xs">
@@ -306,7 +401,7 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
 
               <button
                 onClick={handleNext}
-                disabled={currentIndex === questions.length - 1}
+                disabled={currentIndex === displayedQuestions.length - 1}
                 className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 border border-slate-700 transition-colors"
                 title="Next Question"
               >
@@ -327,9 +422,24 @@ export const PracticeView: React.FC<PracticeViewProps> = ({ onNavigateTab }) => 
                 </span>
               </div>
 
-              <span className="text-[11px] text-indigo-400 font-gaming">
-                {currentQ.exam_id === 'exam-cgl' ? '🏛️ CGL' : currentQ.exam_id === 'exam-chsl' ? '📜 CHSL' : '🛡️ CPO'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-indigo-400 font-gaming">
+                  {currentQ.exam_id === 'exam-cgl' ? '🏛️ CGL' : currentQ.exam_id === 'exam-chsl' ? '📜 CHSL' : '🛡️ CPO'}
+                </span>
+
+                {/* Bookmark Toggle Button */}
+                <button
+                  onClick={() => toggleBookmark(currentQ.id)}
+                  className={`p-1.5 rounded-lg border transition-all active:scale-90 ${
+                    isBookmarked(currentQ.id)
+                      ? 'bg-amber-500/20 border-amber-500/60 text-amber-300 shadow-sm shadow-amber-500/20'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-400 hover:text-white'
+                  }`}
+                  title={isBookmarked(currentQ.id) ? (lang === 'hi' ? 'बुकमार्क हटाएं' : 'Remove Bookmark') : (lang === 'hi' ? 'रिवीजन के लिए बुकमार्क करें' : 'Bookmark Question')}
+                >
+                  <Bookmark className={`w-3.5 h-3.5 ${isBookmarked(currentQ.id) ? 'fill-amber-400 text-amber-400' : ''}`} />
+                </button>
+              </div>
             </div>
 
             <h2 className="text-sm sm:text-base font-semibold text-slate-100 leading-relaxed min-h-[3rem]">
