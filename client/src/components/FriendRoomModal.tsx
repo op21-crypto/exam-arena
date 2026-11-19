@@ -25,8 +25,9 @@ interface FriendRoomModalProps {
   } | null;
   onJoinRoom: (code: string) => void;
   onCreateRoom: (examId?: string, subjectId?: string, maxPlayers?: number) => void;
-  onAddBotLocal?: () => void;
-  onStartRoomBattleLocal?: (roomData: any) => void;
+  onAddBot?: () => void;
+  onToggleReady?: (isReady: boolean) => void;
+  onStartRoomBattle?: (roomData: any) => void;
 }
 
 export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
@@ -34,8 +35,9 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
   roomData,
   onJoinRoom,
   onCreateRoom,
-  onAddBotLocal,
-  onStartRoomBattleLocal
+  onAddBot,
+  onToggleReady,
+  onStartRoomBattle
 }) => {
   const { user, lang } = useAuth();
   const [tab, setTab] = useState<'create' | 'join'>('create');
@@ -95,7 +97,9 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
   };
 
   const handleToggleReady = () => {
-    if (roomData?.roomCode && socket && socket.connected) {
+    if (onToggleReady) {
+      onToggleReady(!isReady);
+    } else if (roomData?.roomCode && socket && socket.connected) {
       socket.emit('toggle_friend_ready', {
         roomCode: roomData.roomCode,
         isReady: !isReady
@@ -104,21 +108,21 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
   };
 
   const handleAddBot = () => {
-    if (socket && socket.connected && roomData?.roomCode) {
+    if (onAddBot) {
+      onAddBot();
+    } else if (socket && socket.connected && roomData?.roomCode) {
       socket.emit('add_bot_to_room', { roomCode: roomData.roomCode });
-    } else if (onAddBotLocal) {
-      onAddBotLocal();
     }
   };
 
   const handleStartBattle = () => {
-    if (socket && socket.connected && roomData?.roomCode) {
+    if (onStartRoomBattle && roomData) {
+      onStartRoomBattle(roomData);
+    } else if (socket && socket.connected && roomData?.roomCode) {
       socket.emit('toggle_friend_ready', {
         roomCode: roomData.roomCode,
         isReady: true
       });
-    } else if (onStartRoomBattleLocal && roomData) {
-      onStartRoomBattleLocal(roomData);
     }
   };
 
@@ -153,9 +157,9 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
             {/* Room Code Card with Direct Share Buttons */}
             <div className="bg-arena-card border border-indigo-500/30 rounded-2xl p-4 text-center">
               <span className="text-[11px] text-slate-400 font-gaming uppercase tracking-wider block mb-1">
-                {lang === 'hi' ? 'रूम एक्सेस कोड' : 'Room Access Code'}
+                {lang === 'hi' ? 'रूम एक्सेस कोड (शेयर करें)' : 'Room Access Code (Share with Friends)'}
               </span>
-              <span className="font-gaming font-black text-3xl sm:text-4xl text-cyan-400 tracking-widest font-mono block mb-3">
+              <span className="font-gaming font-black text-3xl sm:text-4xl text-cyan-400 tracking-widest font-mono block mb-3 select-all">
                 {roomData.roomCode}
               </span>
 
@@ -163,7 +167,7 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
               <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={shareViaWhatsApp}
-                  className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-gaming font-bold text-xs shadow-md transition-transform active:scale-95"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-white font-gaming font-bold text-xs shadow-md transition-transform active:scale-95"
                 >
                   <MessageCircle className="w-4 h-4" />
                   <span>WhatsApp</span>
@@ -171,7 +175,7 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
 
                 <button
                   onClick={shareNative}
-                  className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-gaming font-bold text-xs shadow-md transition-transform active:scale-95"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl bg-indigo-600/90 hover:bg-indigo-500 text-white font-gaming font-bold text-xs shadow-md transition-transform active:scale-95"
                 >
                   <Share2 className="w-4 h-4" />
                   <span>Share</span>
@@ -179,11 +183,17 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
 
                 <button
                   onClick={copyShareLink}
-                  className="flex items-center justify-center gap-1.5 py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-gaming font-bold text-xs transition-colors"
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-gaming font-bold text-xs transition-colors active:scale-95"
                 >
                   {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                   <span>{copiedLink ? (lang === 'hi' ? 'कॉपी हुआ!' : 'Copied!') : (lang === 'hi' ? 'लिंक कॉपी' : 'Copy Link')}</span>
                 </button>
+              </div>
+
+              <div className="mt-2 text-[11px] text-slate-400">
+                {lang === 'hi'
+                  ? 'दोस्त इस लिंक पर क्लिक करके सीधे आपके रूम में शामिल हो सकते हैं!'
+                  : 'Friends can tap your shared link to join your room instantly!'}
               </div>
             </div>
 
@@ -206,64 +216,87 @@ export const FriendRoomModal: React.FC<FriendRoomModalProps> = ({
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                {members.map((m) => (
-                  <div
-                    key={m.userId}
-                    className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3 flex flex-col items-center relative"
-                  >
-                    <div className="relative mb-1.5">
-                      <img
-                        src={m.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + m.userId}
-                        alt={m.username}
-                        className="w-12 h-12 rounded-full border-2 border-indigo-400 object-cover bg-slate-800"
-                      />
-                      {m.isHost && (
-                        <span className="absolute -top-1 -right-1 text-[10px] bg-amber-500 text-slate-950 font-gaming font-extrabold px-1 rounded-full">
-                          HOST
-                        </span>
-                      )}
-                      {m.isBot && (
-                        <span className="absolute -top-1 -left-1 text-[10px] bg-cyan-600 text-white font-gaming font-extrabold px-1 rounded-full">
-                          BOT
-                        </span>
-                      )}
+                {members.map((m) => {
+                  const isCurrent = m.userId === user?.id;
+                  return (
+                    <div
+                      key={m.userId}
+                      className={`bg-slate-900/90 border rounded-2xl p-3 flex flex-col items-center relative ${
+                        isCurrent ? 'border-cyan-500/60 ring-1 ring-cyan-500/30' : 'border-slate-800'
+                      }`}
+                    >
+                      <div className="relative mb-1.5">
+                        <img
+                          src={m.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=' + m.userId}
+                          alt={m.username}
+                          className="w-12 h-12 rounded-full border-2 border-indigo-400 object-cover bg-slate-800"
+                        />
+                        {m.isHost && (
+                          <span className="absolute -top-1 -right-1 text-[10px] bg-amber-500 text-slate-950 font-gaming font-extrabold px-1 rounded-full">
+                            HOST
+                          </span>
+                        )}
+                        {m.isBot && (
+                          <span className="absolute -top-1 -left-1 text-[10px] bg-cyan-600 text-white font-gaming font-extrabold px-1 rounded-full">
+                            BOT
+                          </span>
+                        )}
+                      </div>
+
+                      <span className="font-bold text-xs text-white truncate max-w-[100px] text-center">
+                        {m.username} {isCurrent && '(You)'}
+                      </span>
+                      <span className="text-[10px] text-cyan-400 font-gaming">
+                        {m.rating} Elo
+                      </span>
+
+                      <span className={`mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        m.isReady ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {m.isReady ? (lang === 'hi' ? 'तैयार ✓' : 'READY ✓') : (lang === 'hi' ? 'प्रतीक्षारत' : 'WAITING')}
+                      </span>
                     </div>
-
-                    <span className="font-bold text-xs text-white truncate max-w-[100px] text-center">
-                      {m.username}
-                    </span>
-                    <span className="text-[10px] text-cyan-400 font-gaming">
-                      {m.rating} Elo
-                    </span>
-
-                    <span className={`mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      m.isReady ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
-                    }`}>
-                      {m.isReady ? (lang === 'hi' ? 'तैयार ✓' : 'READY ✓') : (lang === 'hi' ? 'प्रतीक्षारत' : 'WAITING')}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
             {/* Launch / Ready Action */}
             <div className="flex flex-col gap-2 pt-1">
-              <button
-                onClick={handleStartBattle}
-                disabled={members.length < 2}
-                className={`w-full py-4 rounded-2xl font-gaming font-black text-base flex items-center justify-center gap-2 shadow-xl transition-all ${
-                  members.length < 2
-                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-                    : 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:via-indigo-500 hover:to-purple-500 text-white shadow-indigo-900/50 active:scale-95'
-                }`}
-              >
-                <Swords className="w-5 h-5" />
-                <span>
-                  {members.length < 2
-                    ? (lang === 'hi' ? 'कम से कम 1 और खिलाड़ी या AI बॉट जोड़ें!' : 'Add at least 1 more player or AI bot!')
-                    : (lang === 'hi' ? '⚔️ अभी मुकाबला शुरू करें (START BATTLE)' : '⚔️ START MULTIPLAYER BATTLE NOW')}
-                </span>
-              </button>
+              {isHost ? (
+                <button
+                  onClick={handleStartBattle}
+                  disabled={members.length < 2}
+                  className={`w-full py-4 rounded-2xl font-gaming font-black text-base flex items-center justify-center gap-2 shadow-xl transition-all ${
+                    members.length < 2
+                      ? 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+                      : 'bg-gradient-to-r from-cyan-500 via-indigo-600 to-purple-600 hover:from-cyan-400 hover:via-indigo-500 hover:to-purple-500 text-white shadow-indigo-900/50 active:scale-95'
+                  }`}
+                >
+                  <Swords className="w-5 h-5" />
+                  <span>
+                    {members.length < 2
+                      ? (lang === 'hi' ? 'लिंक शेयर करें या AI बॉट जोड़ें!' : 'Share link or add bot to start!')
+                      : (lang === 'hi' ? '⚔️ अभी मुकाबला शुरू करें (START BATTLE)' : '⚔️ START MULTIPLAYER BATTLE NOW')}
+                  </span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleToggleReady}
+                  className={`w-full py-4 rounded-2xl font-gaming font-black text-base flex items-center justify-center gap-2 shadow-xl transition-all ${
+                    isReady
+                      ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/50'
+                      : 'bg-purple-600 hover:bg-purple-500 text-white'
+                  }`}
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>
+                    {isReady
+                      ? (lang === 'hi' ? 'आप तैयार हैं! (मेजबान शुरू करने का इंतजार)' : 'YOU ARE READY! (Waiting for Host)')
+                      : (lang === 'hi' ? 'मैं तैयार हूँ!' : 'I AM READY TO BATTLE!')}
+                  </span>
+                </button>
+              )}
             </div>
           </div>
         ) : (

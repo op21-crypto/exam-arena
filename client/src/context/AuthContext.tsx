@@ -46,36 +46,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       // 1. Store & sync user profile and stats in Cloud Firestore
       const firestoreProfile = await syncUserProfileOnLogin(fbUser, customProfile);
+      setUser(firestoreProfile);
+      socket.emit('register_socket', { userId: firestoreProfile.id });
 
-      // 2. Synchronize with backend API & socket matchmaking
-      const res = await fetch('/api/auth/firebase-sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firebaseUid: fbUser.uid,
-          username: firestoreProfile.username,
-          email: fbUser.email,
-          avatar: firestoreProfile.avatar,
-          isGuest: fbUser.isAnonymous
-        })
-      });
+      // 2. Synchronize with backend API & socket matchmaking (optional when running on static Vercel)
+      try {
+        const res = await fetch('/api/auth/firebase-sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            firebaseUid: fbUser.uid,
+            username: firestoreProfile.username,
+            email: fbUser.email,
+            avatar: firestoreProfile.avatar,
+            isGuest: fbUser.isAnonymous
+          })
+        });
 
-      if (res.ok) {
-        const data = await res.json();
-        localStorage.setItem('exam_arena_token', data.token);
-        setToken(data.token);
-        setUser(data.user);
-        socket.emit('register_socket', { userId: data.user.id });
-        return { success: true };
-      } else {
-        // Fallback to firestore profile directly
-        setUser(firestoreProfile);
-        socket.emit('register_socket', { userId: firestoreProfile.id });
-        return { success: true };
+        if (res.ok) {
+          const data = await res.json();
+          if (data.token) {
+            localStorage.setItem('exam_arena_token', data.token);
+            setToken(data.token);
+          }
+        }
+      } catch {
+        // Backend API offline / static host
       }
+
+      return { success: true };
     } catch (err: any) {
-      console.error('Failed to sync user with Firebase/Backend:', err);
-      return { success: false, error: err.message };
+      console.warn('Firebase login profile fallback to guest:', err);
+      const fallback = createFallbackGuest();
+      fallback.id = fbUser.uid;
+      setUser(fallback);
+      return { success: true };
     }
   };
 
@@ -182,7 +187,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return res;
     } catch (err: any) {
       console.error('Google Sign-In failed:', err);
-      return { success: false, error: err.message || 'Google Sign-In failed' };
+      let userMsg = err.message || 'Google Sign-In failed';
+      if (err.code === 'auth/operation-not-allowed') {
+        userMsg = 'Google Sign-In is not enabled in Firebase Console. Please use Email/Password or Guest login.';
+      } else if (err.code === 'auth/popup-closed-by-user') {
+        userMsg = 'Sign-in popup was closed before completing.';
+      }
+      return { success: false, error: userMsg };
     } finally {
       setIsLoading(false);
     }

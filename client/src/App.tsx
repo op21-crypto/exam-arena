@@ -15,6 +15,8 @@ import { BattleResultModal } from './components/BattleResultModal';
 import { FriendRoomModal } from './components/FriendRoomModal';
 import { AuthModal } from './components/AuthModal';
 import { localGameEngine } from './services/localGameEngine';
+import { multiplayerRoomService, FirestoreRoomData } from './services/multiplayerRoomService';
+import { BUNDLED_QUESTIONS } from './data/bundledQuestions';
 import { SanitizedQuestion, BattlePlayerInfo, BattleFinishedData } from './types';
 
 export const App: React.FC = () => {
@@ -24,6 +26,7 @@ export const App: React.FC = () => {
   const [showFriendModal, setShowFriendModal] = useState<boolean>(false);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const searchTimeoutRef = useRef<any>(null);
+  const roomTimerRef = useRef<any>(null);
 
   // Friend Room State
   const [friendRoomData, setFriendRoomData] = useState<any>(null);
@@ -58,29 +61,153 @@ export const App: React.FC = () => {
   const [rematchRequested, setRematchRequested] = useState<boolean>(false);
   const [opponentRematchReady, setOpponentRematchReady] = useState<boolean>(false);
 
-  // Auto-detect ?room=CODE or ?join=CODE in URL query params on load!
+  // 1. Auto-detect ?room=CODE or ?join=CODE in URL query params on load!
   useEffect(() => {
     if (!user) return;
     const params = new URLSearchParams(window.location.search);
     const roomCode = params.get('room') || params.get('join');
     if (roomCode) {
       console.log('🔗 Auto-joining friend room from URL query:', roomCode);
-      if (socket && socket.connected) {
-        socket.emit('join_friend_room', {
-          roomCode: roomCode.toUpperCase(),
-          userId: user.id
-        });
-      } else {
-        // Local join
-        const localRoom = localGameEngine.createFriendRoom(user);
-        localRoom.roomCode = roomCode.toUpperCase();
-        setFriendRoomData(localRoom);
-      }
-      setShowFriendModal(true);
+      handleJoinFriendRoom(roomCode);
+      // Clean query parameter from URL bar without reloading
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [user?.id]);
 
-  // Socket event listeners
+  // 2. Real-Time Firestore Room State Sync
+  const handleFirestoreRoomUpdate = (room: FirestoreRoomData) => {
+    setFriendRoomData(room);
+
+    // Waiting lobby phase
+    if (room.status === 'waiting') {
+      return;
+    }
+
+    // Starting Countdown Phase
+    if (room.status === 'countdown') {
+      setShowFriendModal(false);
+      setActiveBattleId(room.roomCode);
+
+      const hostMember = room.members.find(m => m.isHost) || room.members[0];
+      const otherMembers = room.members.filter(m => m.userId !== hostMember.userId);
+      const guestMember = otherMembers[0] || hostMember;
+
+      setBattlePlayers({
+        player1: {
+          userId: hostMember.userId,
+          username: hostMember.username,
+          avatar: hostMember.avatar,
+          rating: hostMember.rating,
+          rankTier: hostMember.rankTier
+        },
+        player2: {
+          userId: guestMember.userId,
+          username: guestMember.username,
+          avatar: guestMember.avatar,
+          rating: guestMember.rating,
+          rankTier: guestMember.rankTier
+        }
+      });
+
+      setAllBattlePlayers(room.members.map(m => ({
+        ...m,
+        score: room.scores?.[m.userId] || 0,
+        answered: false
+      })));
+
+      setShowVSModal(true);
+      setVsData({
+        player1: hostMember,
+        player2: guestMember,
+        countdown: room.countdown ?? 3,
+        countdownMessage: room.countdown === 0 ? 'BATTLE!' : undefined
+      });
+      return;
+    }
+
+    // In Battle Phase
+    if (room.status === 'in_battle') {
+      setShowVSModal(false);
+      const qIndex = room.currentQuestionIndex;
+      const question = room.questions[qIndex];
+
+      if (question) {
+        // If question changed, reset timer and resolution
+        if (!currentQuestion || currentQuestion.id !== question.id) {
+          setCurrentQuestion(question);
+          setQuestionIndex(qIndex);
+          setTotalQuestions(room.questions.length);
+          setQuestionResolution(null);
+          setRemainingSeconds(10);
+
+          // Reset local 10s timer
+          if (roomTimerRef.current) clearInterval(roomTimerRef.current);
+          roomTimerRef.current = setInterval(() => {
+            setRemainingSeconds(prev => {
+              if (prev <= 1) {
+                clearInterval(roomTimerRef.current);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+        }
+
+        // Live Scores
+        const mySc = room.scores?.[user?.id || ''] || 0;
+        setMyScore(mySc);
+
+        const otherMembers = room.members.filter(m => m.userId !== user?.id);
+        const oppSc = otherMembers[0] ? (room.scores?.[otherMembers[0].userId] || 0) : 0;
+        setOpponentScore(oppSc);
+
+        // Check if opponent answered current question
+        const currentQAnswers = room.answers?.[qIndex] || {};
+        const oppAnswered = otherMembers.some(m => Boolean(currentQAnswers[m.userId]));
+        setOpponentAnswered(oppAnswered);
+
+        // Update contestant answered indicators
+        setAllBattlePlayers(room.members.map(m => ({
+          ...m,
+          score: room.scores?.[m.userId] || 0,
+          answered: Boolean(currentQAnswers[m.userId])
+        })));
+      }
+      return;
+    }
+
+    // Finished Phase
+    if (room.status === 'finished') {
+      if (roomTimerRef.current) clearInterval(roomTimerRef.current);
+      setCurrentQuestion(null);
+      setQuestionResolution(null);
+
+      const ranked = [...room.members].map(m => {
+        const sc = room.scores?.[m.userId] || 0;
+        const totalPossible = Math.max(1, room.questions.length * 100);
+        return {
+          ...m,
+          score: sc,
+          correctCount: Math.floor(sc / 100),
+          accuracy: Math.min(100, Math.round((sc / totalPossible) * 100)),
+          ratingChange: sc >= (room.scores?.[user?.id || ''] || 0) ? 24 : -16,
+          earnedXp: 150,
+          earnedCoins: 35
+        };
+      }).sort((a, b) => b.score - a.score);
+
+      setBattleResultData({
+        battleId: room.roomCode,
+        player1: ranked.find(p => p.userId === user?.id) || ranked[0],
+        player2: ranked.find(p => p.userId !== user?.id) || ranked[1] || ranked[0],
+        questions: room.questions,
+        rankedPlayers: ranked
+      });
+      refreshUser();
+    }
+  };
+
+  // Socket event listeners (for server-based multiplayer if connected)
   useEffect(() => {
     socket.on('queue_joined', () => {
       setIsSearching(true);
@@ -209,7 +336,7 @@ export const App: React.FC = () => {
     };
   }, [user?.id]);
 
-  // Hybrid Battle Launcher: Works 100% online or offline!
+  // Hybrid 1v1 Battle Launcher: Works 100% online or offline!
   const handleStartQuickBattle = (examId?: string, subjectId?: string, isSpeed?: boolean) => {
     if (!user) return;
     setIsSearching(true);
@@ -315,19 +442,77 @@ export const App: React.FC = () => {
     setIsSearching(false);
   };
 
-  const handleSubmitAnswer = (selectedOption: number, elapsedMs: number) => {
-    if (!activeBattleId) return;
+  const handleSubmitAnswer = async (selectedOption: number, elapsedMs: number) => {
+    if (!activeBattleId || !user) return;
 
+    // A. Real-Time Friend Room Battle (Firestore)
+    if (activeBattleId.startsWith('ARENA-') && friendRoomData) {
+      const qIndex = questionIndex;
+      const curQ = currentQuestion;
+      if (!curQ) return;
+
+      const bundledMatch = BUNDLED_QUESTIONS.find(q => q.id === curQ.id);
+      const correctOption = bundledMatch ? bundledMatch.correct_option : 0;
+
+      await multiplayerRoomService.submitAnswer(
+        activeBattleId,
+        qIndex,
+        user.id,
+        selectedOption,
+        elapsedMs,
+        correctOption
+      );
+
+      const isCorrect = selectedOption === correctOption;
+      let speedBonus = 0;
+      if (isCorrect) {
+        if (elapsedMs <= 2000) speedBonus = 50;
+        else if (elapsedMs <= 4000) speedBonus = 35;
+        else if (elapsedMs <= 6000) speedBonus = 20;
+        else if (elapsedMs <= 8000) speedBonus = 10;
+      }
+      const pointsAwarded = isCorrect ? 100 + speedBonus : 0;
+
+      setQuestionResolution({
+        questionIndex: qIndex,
+        correctOption,
+        explanation_en: bundledMatch?.explanation_en || '',
+        explanation_hi: bundledMatch?.explanation_hi || '',
+        yourChoice: selectedOption,
+        isCorrect,
+        pointsAwarded,
+        yourScore: myScore + pointsAwarded,
+        opponentChoice: null,
+        opponentScore
+      });
+
+      // If user is host: advance after 3s
+      const isHost = friendRoomData.hostUserId === user.id;
+      if (isHost) {
+        setTimeout(async () => {
+          if (qIndex < totalQuestions - 1) {
+            await multiplayerRoomService.advanceToNextQuestion(activeBattleId, qIndex + 1);
+          } else {
+            await multiplayerRoomService.finishBattle(activeBattleId);
+          }
+        }, 3000);
+      }
+      return;
+    }
+
+    // B. Local Bot Battle
     if (activeBattleId.startsWith('local_battle_')) {
       localGameEngine.submitAnswer(selectedOption, elapsedMs);
-    } else {
-      socket.emit('submit_answer', {
-        battleId: activeBattleId,
-        questionIndex,
-        selectedOption,
-        elapsedMs
-      });
+      return;
     }
+
+    // C. Socket Server Battle
+    socket.emit('submit_answer', {
+      battleId: activeBattleId,
+      questionIndex,
+      selectedOption,
+      elapsedMs
+    });
   };
 
   const handleRematch = () => {
@@ -339,13 +524,17 @@ export const App: React.FC = () => {
         setOpponentRematchReady(true);
         handleStartQuickBattle();
       }, 600);
+    } else if (activeBattleId.startsWith('ARENA-')) {
+      handleCreateFriendRoom();
     } else {
       socket.emit('request_rematch', { battleId: activeBattleId });
     }
   };
 
   const handleReturnHome = () => {
+    multiplayerRoomService.unsubscribe();
     localGameEngine.stopActiveBattle();
+    if (roomTimerRef.current) clearInterval(roomTimerRef.current);
     setActiveBattleId(null);
     setBattlePlayers(null);
     setShowVSModal(false);
@@ -355,116 +544,85 @@ export const App: React.FC = () => {
     setActiveTab('home');
   };
 
-  const handleCreateFriendRoom = (examId?: string, subjectId?: string, maxPlayers?: number) => {
+  // Friend Room: Create
+  const handleCreateFriendRoom = async (examId?: string, subjectId?: string, maxPlayers?: number) => {
     if (!user) return;
-    if (socket && socket.connected) {
-      socket.emit('create_friend_room', {
-        userId: user.id,
-        examId,
-        subjectId,
-        maxPlayers: maxPlayers || 4
-      });
-    } else {
-      const room = localGameEngine.createFriendRoom(user, examId, subjectId, maxPlayers);
+    try {
+      // Create real-time room in Firestore
+      const room = await multiplayerRoomService.createRoom(user, examId, subjectId, maxPlayers);
       setFriendRoomData(room);
+      setShowFriendModal(true);
+
+      // Subscribe to real-time updates so Host immediately sees friend join!
+      multiplayerRoomService.subscribeToRoom(room.roomCode, handleFirestoreRoomUpdate);
+
+      // Also emit to socket if connected
+      if (socket && socket.connected) {
+        socket.emit('create_friend_room', {
+          userId: user.id,
+          roomCode: room.roomCode,
+          examId,
+          subjectId,
+          maxPlayers: maxPlayers || 4
+        });
+      }
+    } catch (err) {
+      console.warn('Firestore room create error, using local room fallback:', err);
+      const localRoom = localGameEngine.createFriendRoom(user, examId, subjectId, maxPlayers);
+      setFriendRoomData(localRoom);
       setShowFriendModal(true);
     }
   };
 
-  const handleJoinFriendRoom = (code: string) => {
+  // Friend Room: Join (Called via link or code entry)
+  const handleJoinFriendRoom = async (code: string) => {
     if (!user) return;
-    if (socket && socket.connected) {
-      socket.emit('join_friend_room', {
-        roomCode: code,
-        userId: user.id
-      });
-    } else {
-      const room = localGameEngine.createFriendRoom(user);
-      room.roomCode = code;
-      setFriendRoomData(room);
+    try {
+      const res = await multiplayerRoomService.joinRoom(code, user);
+      if (res.success && res.room) {
+        setFriendRoomData(res.room);
+        setShowFriendModal(true);
+
+        // Subscribe to real-time room updates!
+        multiplayerRoomService.subscribeToRoom(res.room.roomCode, handleFirestoreRoomUpdate);
+
+        if (socket && socket.connected) {
+          socket.emit('join_friend_room', {
+            roomCode: res.room.roomCode,
+            userId: user.id
+          });
+        }
+      } else {
+        alert(res.error || 'Failed to join room. Please check the code.');
+      }
+    } catch (err: any) {
+      console.error('Failed to join friend room:', err);
+      alert('Error joining room: ' + err.message);
     }
   };
 
-  const handleAddBotLocal = () => {
+  const handleAddBotToFriendRoom = async () => {
     if (!friendRoomData) return;
-    const updated = localGameEngine.addBotToRoom(friendRoomData);
-    setFriendRoomData(updated);
+    if (friendRoomData.roomCode?.startsWith('ARENA-')) {
+      await multiplayerRoomService.addBot(friendRoomData.roomCode);
+    } else {
+      const updated = localGameEngine.addBotToRoom(friendRoomData);
+      setFriendRoomData(updated);
+    }
   };
 
-  const handleStartRoomBattleLocal = (room: any) => {
-    if (!user || !room) return;
-    setShowFriendModal(false);
+  const handleToggleReadyInFriendRoom = async (isReady: boolean) => {
+    if (!friendRoomData || !user) return;
+    if (friendRoomData.roomCode?.startsWith('ARENA-')) {
+      await multiplayerRoomService.toggleReady(friendRoomData.roomCode, user.id, isReady);
+    }
+  };
 
-    const contestantBots = room.members.filter((m: any) => m.userId !== user.id);
-
-    localGameEngine.startBattle(
-      {
-        examId: room.examId,
-        subjectId: room.subjectId,
-        user,
-        contestantBots
-      },
-      {
-        onMatched: (data) => {
-          setActiveBattleId(data.battleId);
-          setBattlePlayers({ player1: data.player1, player2: data.player2 });
-          setAllBattlePlayers(data.players || [data.player1, data.player2]);
-          setBattleResultData(null);
-          setRematchRequested(false);
-          setOpponentRematchReady(false);
-          setMyScore(0);
-          setOpponentScore(0);
-          setTotalQuestions(data.totalQuestions);
-          setShowVSModal(true);
-          setVsData({
-            player1: data.player1,
-            player2: data.player2,
-            countdown: null
-          });
-        },
-        onCountdown: (data) => {
-          setVsData(prev => prev ? {
-            ...prev,
-            countdown: data.count,
-            countdownMessage: data.message
-          } : null);
-        },
-        onQuestionStart: (data) => {
-          setShowVSModal(false);
-          setCurrentQuestion(data.question);
-          setQuestionIndex(data.questionIndex);
-          setTotalQuestions(data.totalQuestions);
-          setRemainingSeconds(data.timeLimitSeconds);
-          setOpponentAnswered(false);
-          setQuestionResolution(null);
-          if (data.players) setAllBattlePlayers(data.players);
-        },
-        onTimerTick: (data) => {
-          setRemainingSeconds(data.remainingSeconds);
-        },
-        onOpponentStatus: (data) => {
-          setOpponentAnswered(data.hasAnswered);
-          if (data.playersAnswered) {
-            setAllBattlePlayers(prev => prev.map(p => {
-              const match = data.playersAnswered?.find((pa: any) => pa.userId === p.userId);
-              return match ? { ...p, answered: match.answered } : p;
-            }));
-          }
-        },
-        onQuestionResolved: (data) => {
-          setQuestionResolution(data);
-          setMyScore(data.yourScore);
-          setOpponentScore(data.opponentScore);
-          if (data.allPlayers) setAllBattlePlayers(data.allPlayers);
-        },
-        onBattleFinished: (data) => {
-          setCurrentQuestion(null);
-          setQuestionResolution(null);
-          setBattleResultData(data);
-          refreshUser();
-        }
-      }
-    );
+  const handleStartFriendBattle = async (room: any) => {
+    if (!room) return;
+    if (room.roomCode?.startsWith('ARENA-')) {
+      await multiplayerRoomService.startBattle(room.roomCode);
+    }
   };
 
   return (
@@ -554,14 +712,16 @@ export const App: React.FC = () => {
       {showFriendModal && (
         <FriendRoomModal
           onClose={() => {
+            multiplayerRoomService.unsubscribe();
             setShowFriendModal(false);
             setFriendRoomData(null);
           }}
           roomData={friendRoomData}
           onCreateRoom={handleCreateFriendRoom}
           onJoinRoom={handleJoinFriendRoom}
-          onAddBotLocal={handleAddBotLocal}
-          onStartRoomBattleLocal={handleStartRoomBattleLocal}
+          onAddBot={handleAddBotToFriendRoom}
+          onToggleReady={handleToggleReadyInFriendRoom}
+          onStartRoomBattle={handleStartFriendBattle}
         />
       )}
 

@@ -58,14 +58,23 @@ export async function syncUserProfileOnLogin(
   const userRef = doc(db, 'users', firebaseUser.uid);
   const statsRef = doc(db, 'user_stats', firebaseUser.uid);
 
-  const [userSnap, statsSnap] = await Promise.all([
-    getDoc(userRef),
-    getDoc(statsRef)
-  ]);
+  // Safe fetch for user and stats
+  let userSnap: any = null;
+  let statsSnap: any = null;
+  try {
+    const results = await Promise.all([
+      getDoc(userRef),
+      getDoc(statsRef)
+    ]);
+    userSnap = results[0];
+    statsSnap = results[1];
+  } catch (readErr) {
+    console.warn('Initial document read error (new user or permissions):', readErr);
+  }
 
   let username: string = customProfile?.username?.trim() || '';
   if (!username) {
-    if (userSnap.exists() && userSnap.data()?.username) {
+    if (userSnap && userSnap.exists() && userSnap.data()?.username) {
       username = userSnap.data().username;
     } else if (firebaseUser.displayName) {
       username = firebaseUser.displayName.replace(/[^a-zA-Z0-9_]/g, '_').slice(0, 20);
@@ -76,7 +85,7 @@ export async function syncUserProfileOnLogin(
 
   let avatar: string = customProfile?.avatar || '';
   if (!avatar) {
-    if (userSnap.exists() && userSnap.data()?.avatar) {
+    if (userSnap && userSnap.exists() && userSnap.data()?.avatar) {
       avatar = userSnap.data().avatar;
     } else if (firebaseUser.photoURL) {
       avatar = firebaseUser.photoURL;
@@ -87,8 +96,8 @@ export async function syncUserProfileOnLogin(
 
   const now = Timestamp.now();
 
-  // Create or Update /users/{userId}
-  if (!userSnap.exists()) {
+  // Create or Update /users/{userId} with merge to avoid 'document not found' errors
+  if (!userSnap || !userSnap.exists()) {
     await setDoc(userRef, {
       id: firebaseUser.uid,
       username,
@@ -99,14 +108,14 @@ export async function syncUserProfileOnLogin(
       lastLoginAt: now
     });
   } else {
-    await updateDoc(userRef, {
+    await setDoc(userRef, {
       lastLoginAt: now
-    });
+    }, { merge: true });
   }
 
   // Create /user_stats/{userId} if not exists
   let rawStatsData: any;
-  if (!statsSnap.exists()) {
+  if (!statsSnap || !statsSnap.exists()) {
     rawStatsData = {
       userId: firebaseUser.uid,
       rating: 1200,
